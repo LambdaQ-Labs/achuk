@@ -1,0 +1,23 @@
+{
+  "id": "contract-001",
+  "category": "contract",
+  "prompt": "Implement `insertSorted : List Nat, Nat -> List Nat` satisfying the contract: if the input list is sorted ascending, the output is sorted ascending and contains the new element.",
+  "scope": [
+    { "name": "List.splitWhen", "ty": "List a, (a -> Bool) -> Pair (List a) (List a)" },
+    { "name": "List.append", "ty": "List a, List a -> List a" },
+    { "name": "List.single", "ty": "a -> List a" },
+    { "name": "Nat.lte", "ty": "Nat, Nat -> Bool" },
+    { "name": "Pair.first", "ty": "Pair a b -> a" },
+    { "name": "Pair.second", "ty": "Pair a b -> b" }
+  ],
+  "grade": {
+    "compile": true,
+    "tests": ["tests/insert_sorted_spec.claw"],
+    "contracts": [
+      "sorted(input) => sorted(result)",
+      "List.len(result) == List.len(input) + 1"
+    ],
+    "forbidden": ["hallucinated-symbol"]
+  },
+  "reference": "solutions/contract-001.claw"
+}

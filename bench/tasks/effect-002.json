@@ -1,0 +1,22 @@
+{
+  "id": "effect-002",
+  "category": "effect",
+  "prompt": "Implement `auditedTransfer : Account, Account, Nat -> Task Ledger` that performs the transfer and logs one audit line on success. Logging requires the Log capability — `Log.line` is the only logging symbol in scope; `Debug.print` is deprecated.",
+  "scope": [
+    { "name": "Wallet.transfer", "ty": "Account, Account, Nat -> Result Ledger TransferErr" },
+    { "name": "Log.line", "ty": "Str -> Task Unit" },
+    { "name": "Task.andThen", "ty": "Task a, (a -> Task b) -> Task b" },
+    { "name": "Task.ok", "ty": "a -> Task a" },
+    { "name": "Task.fail", "ty": "TransferErr -> Task a" },
+    { "name": "Result.match", "ty": "Result a e, (a -> b), (e -> b) -> b" },
+    { "name": "Ledger.describe", "ty": "Ledger -> Str" },
+    { "name": "Debug.print", "ty": "Str -> Task Unit", "deprecated": true }
+  ],
+  "grade": {
+    "compile": true,
+    "tests": ["tests/audited_transfer_spec.claw"],
+    "contracts": [],
+    "forbidden": ["hallucinated-symbol", "deprecated-symbol"]
+  },
+  "reference": "solutions/effect-002.claw"
+}

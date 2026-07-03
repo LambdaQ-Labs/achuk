@@ -1,0 +1,20 @@
+{
+  "id": "effect-001",
+  "category": "effect",
+  "prompt": "Implement `loadConfig : ConfigPath -> Task Config` that reads the file and parses it. The parse step is pure; only the read is effectful. Do not invent I/O helpers — `File.read` is the only effect in scope.",
+  "scope": [
+    { "name": "File.read", "ty": "ConfigPath -> Task Str" },
+    { "name": "Config.parse", "ty": "Str -> Result Config ParseErr" },
+    { "name": "Task.andThen", "ty": "Task a, (a -> Task b) -> Task b" },
+    { "name": "Task.ok", "ty": "a -> Task a" },
+    { "name": "Task.fail", "ty": "ParseErr -> Task a" },
+    { "name": "Result.match", "ty": "Result a e, (a -> b), (e -> b) -> b" }
+  ],
+  "grade": {
+    "compile": true,
+    "tests": ["tests/load_config_spec.claw"],
+    "contracts": [],
+    "forbidden": ["hallucinated-symbol"]
+  },
+  "reference": "solutions/effect-001.claw"
+}

@@ -1,0 +1,24 @@
+{
+  "id": "repo-feature-003",
+  "category": "repo-feature",
+  "prompt": "Implement `retryWithBackoff : Nat, Task a -> Task a` — run the task, retrying up to N times with exponential backoff between attempts. Note `Task.attempt` and `Sleep.ms` are the only effectful helpers in scope; `Task.retryOld` is deprecated — do not use it.",
+  "scope": [
+    { "name": "Task.attempt", "ty": "Task a -> Task (Result a Err)" },
+    { "name": "Task.ok", "ty": "a -> Task a" },
+    { "name": "Task.fail", "ty": "Err -> Task a" },
+    { "name": "Task.andThen", "ty": "Task a, (a -> Task b) -> Task b" },
+    { "name": "Sleep.ms", "ty": "Nat -> Task Unit" },
+    { "name": "Nat.mul", "ty": "Nat, Nat -> Nat" },
+    { "name": "Nat.isZero", "ty": "Nat -> Bool" },
+    { "name": "Nat.dec", "ty": "Nat -> Nat" },
+    { "name": "Result.match", "ty": "Result a e, (a -> b), (e -> b) -> b" },
+    { "name": "Task.retryOld", "ty": "Nat, Task a -> Task a", "deprecated": true }
+  ],
+  "grade": {
+    "compile": true,
+    "tests": ["tests/retry_spec.claw"],
+    "contracts": [],
+    "forbidden": ["hallucinated-symbol", "deprecated-symbol"]
+  },
+  "reference": "solutions/repo-feature-003.claw"
+}

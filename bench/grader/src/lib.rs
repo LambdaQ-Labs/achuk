@@ -45,15 +45,48 @@ fn default_true() -> bool {
     true
 }
 
+/// A symbol seeded into the CDB before the task runs — the task's
+/// "repository context". Types use the signature syntax
+/// (`claw_core::parse::parse_type`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScopeEntry {
+    pub name: String,
+    pub ty: String,
+    #[serde(default)]
+    pub deprecated: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
     pub id: String,
     pub category: Category,
     pub prompt: String,
+    /// In-scope symbols available to the solution (the CDB snapshot).
+    #[serde(default)]
+    pub scope: Vec<ScopeEntry>,
     pub grade: GradeSpec,
     /// Path to the reference solution (not shown to the model).
     #[serde(default)]
     pub reference: Option<String>,
+}
+
+impl Task {
+    /// Build the CDB this task runs against: one definition per scope
+    /// entry. Placeholder bodies (unique per name) — `candidates()` and
+    /// hallucination detection only need names, types, and hashes.
+    pub fn build_scope_cdb(&self) -> anyhow::Result<Cdb> {
+        use claw_core::{parse::parse_type, Expr, Lit};
+        let mut cdb = Cdb::in_memory()?;
+        for entry in &self.scope {
+            let ty = parse_type(&entry.ty)
+                .map_err(|e| anyhow::anyhow!("scope `{}`: {e}", entry.name))?;
+            let mut def = Def::new(Expr::Lit(Lit::Str(entry.name.clone())), ty);
+            def.deprecated = entry.deprecated;
+            let h = cdb.put(&def)?;
+            cdb.bind(&entry.name, &h)?;
+        }
+        Ok(cdb)
+    }
 }
 
 // ---------------------------------------------------------------------
@@ -163,6 +196,7 @@ mod tests {
             id: "t-001".into(),
             category: Category::FromScratch,
             prompt: "produce a Nat".into(),
+            scope: vec![],
             grade: GradeSpec {
                 compile: true,
                 tests: vec![],
@@ -244,6 +278,40 @@ mod tests {
         let r = grade(&task, &[produced], &cdb, 0, 10).unwrap();
         assert_eq!(r.tests_passed, (0, 1));
         assert!(!r.pass, "tasks with unexecuted oracles must not pass");
+    }
+
+    #[test]
+    fn scope_seeds_cdb_with_queryable_symbols() {
+        let mut task = simple_task(vec![]);
+        task.scope = vec![
+            ScopeEntry {
+                name: "Nat.checkedSub".into(),
+                ty: "Nat, Nat -> Result Nat MathErr".into(),
+                deprecated: false,
+            },
+            ScopeEntry {
+                name: "Nat.max".into(),
+                ty: "Nat, Nat -> Nat".into(),
+                deprecated: false,
+            },
+        ];
+        let cdb = task.build_scope_cdb().unwrap();
+        assert_eq!(cdb.symbols().unwrap().len(), 2);
+        // type-directed lookup works over seeded scope
+        let q = claw_core::parse::parse_type("Nat, Nat -> a").unwrap();
+        let found = cdb.candidates(&q).unwrap();
+        assert_eq!(found.len(), 2);
+    }
+
+    #[test]
+    fn bad_scope_type_is_a_loud_error() {
+        let mut task = simple_task(vec![]);
+        task.scope = vec![ScopeEntry {
+            name: "broken".into(),
+            ty: "Nat,".into(),
+            deprecated: false,
+        }];
+        assert!(task.build_scope_cdb().is_err());
     }
 
     #[test]

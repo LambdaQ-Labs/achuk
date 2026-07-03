@@ -1,0 +1,19 @@
+{
+  "id": "repo-feature-002",
+  "category": "repo-feature",
+  "prompt": "Implement `lookupOrFetch : Cache, UserId -> Task User` — return the cached user if present, otherwise fetch over HTTP and insert into the cache. Repository symbols are in scope.",
+  "scope": [
+    { "name": "Cache.get", "ty": "Cache, UserId -> Maybe User" },
+    { "name": "Cache.insert", "ty": "Cache, UserId, User -> Cache" },
+    { "name": "Http.getUser", "ty": "UserId -> Task User" },
+    { "name": "Task.ok", "ty": "a -> Task a" },
+    { "name": "Maybe.match", "ty": "Maybe a, (a -> b), b -> b" }
+  ],
+  "grade": {
+    "compile": true,
+    "tests": ["tests/lookup_or_fetch_spec.claw"],
+    "contracts": [],
+    "forbidden": ["hallucinated-symbol"]
+  },
+  "reference": "solutions/repo-feature-002.claw"
+}

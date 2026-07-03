@@ -1,0 +1,17 @@
+{
+  "id": "from-scratch-003",
+  "category": "from-scratch",
+  "prompt": "Define `sum : List Nat -> Nat` that adds all elements, folding from zero.",
+  "scope": [
+    { "name": "List.fold", "ty": "List a, b, (b, a -> b) -> b" },
+    { "name": "Nat.add", "ty": "Nat, Nat -> Nat" },
+    { "name": "Nat.zero", "ty": "Nat" }
+  ],
+  "grade": {
+    "compile": true,
+    "tests": ["tests/sum_spec.claw"],
+    "contracts": [],
+    "forbidden": ["hallucinated-symbol"]
+  },
+  "reference": "solutions/from-scratch-003.claw"
+}

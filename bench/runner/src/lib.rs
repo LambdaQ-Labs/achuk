@@ -1,0 +1,424 @@
+//! claw-bench-runner — drives models through benchmark tasks (WS-J).
+//!
+//! Arms (docs/benchmark-harness.md §4):
+//!   A0 — baseline: prompt only, no CDB context
+//!   A1 — +context: in-scope symbol table included in the prompt
+//!   A2 — +mask: decode-time constraint (needs logits integration; not yet)
+//!
+//! Prototype protocol: the model emits produced definitions as JSON
+//! (`Vec<Def>` in claw-core's serde format). Parse failures feed back as
+//! retry context, grading is deterministic (claw-bench-grader). The real
+//! surface syntax replaces the JSON protocol when the compiler lands; the
+//! arms, retry loop, and reporting stay fixed.
+
+use claw_bench_grader::{grade, GradeResult, Task};
+use claw_core::Def;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Arm {
+    A0,
+    A1,
+    A2,
+}
+
+impl std::str::FromStr for Arm {
+    type Err = anyhow::Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_uppercase().as_str() {
+            "A0" => Ok(Arm::A0),
+            "A1" => Ok(Arm::A1),
+            "A2" => Ok(Arm::A2),
+            other => anyhow::bail!("unknown arm `{other}` (expected A0|A1|A2)"),
+        }
+    }
+}
+
+/// Anything that can produce a completion for a prompt.
+/// `MockGenerator` for deterministic CI; `HttpGenerator` for real models.
+pub trait Generate {
+    fn generate(&mut self, prompt: &str) -> anyhow::Result<String>;
+    /// Rough token accounting for the report (prototype: chars/4).
+    fn tokens_used(&self) -> u64;
+}
+
+// ---------------------------------------------------------------------
+// Generators
+// ---------------------------------------------------------------------
+
+/// Deterministic generator for tests/CI: pops canned responses in order.
+pub struct MockGenerator {
+    responses: Vec<String>,
+    cursor: usize,
+    tokens: u64,
+}
+
+impl MockGenerator {
+    pub fn new(responses: Vec<String>) -> Self {
+        MockGenerator {
+            responses,
+            cursor: 0,
+            tokens: 0,
+        }
+    }
+}
+
+impl Generate for MockGenerator {
+    fn generate(&mut self, prompt: &str) -> anyhow::Result<String> {
+        self.tokens += (prompt.len() as u64) / 4;
+        let r = self
+            .responses
+            .get(self.cursor)
+            .cloned()
+            .unwrap_or_else(|| self.responses.last().cloned().unwrap_or_default());
+        self.cursor += 1;
+        self.tokens += (r.len() as u64) / 4;
+        Ok(r)
+    }
+
+    fn tokens_used(&self) -> u64 {
+        self.tokens
+    }
+}
+
+/// OpenAI-compatible chat-completions client.
+/// Config via env: CLAW_MODEL_URL (e.g. http://localhost:8000/v1),
+/// CLAW_MODEL_NAME, CLAW_MODEL_KEY (optional).
+pub struct HttpGenerator {
+    base_url: String,
+    model: String,
+    api_key: Option<String>,
+    tokens: u64,
+}
+
+impl HttpGenerator {
+    pub fn from_env() -> anyhow::Result<Self> {
+        Ok(HttpGenerator {
+            base_url: std::env::var("CLAW_MODEL_URL")
+                .map_err(|_| anyhow::anyhow!("CLAW_MODEL_URL not set"))?,
+            model: std::env::var("CLAW_MODEL_NAME").unwrap_or_else(|_| "default".into()),
+            api_key: std::env::var("CLAW_MODEL_KEY").ok(),
+            tokens: 0,
+        })
+    }
+}
+
+impl Generate for HttpGenerator {
+    fn generate(&mut self, prompt: &str) -> anyhow::Result<String> {
+        let url = format!("{}/chat/completions", self.base_url.trim_end_matches('/'));
+        let mut req = ureq::post(&url).set("content-type", "application/json");
+        if let Some(k) = &self.api_key {
+            req = req.set("authorization", &format!("Bearer {k}"));
+        }
+        let body = serde_json::json!({
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.2,
+        });
+        let resp: serde_json::Value = req.send_json(body)?.into_json()?;
+        if let Some(u) = resp.get("usage").and_then(|u| u.get("total_tokens")) {
+            self.tokens += u.as_u64().unwrap_or(0);
+        }
+        resp["choices"][0]["message"]["content"]
+            .as_str()
+            .map(String::from)
+            .ok_or_else(|| anyhow::anyhow!("malformed completion response"))
+    }
+
+    fn tokens_used(&self) -> u64 {
+        self.tokens
+    }
+}
+
+// ---------------------------------------------------------------------
+// Prompt building
+// ---------------------------------------------------------------------
+
+const OUTPUT_PROTOCOL: &str = r#"
+Output ONLY a JSON array of definitions, no prose, no code fences.
+Definition schema (serde):
+  {"expr": <Expr>, "ty": <Type>, "effects": [], "deprecated": false, "doc": ""}
+Expr: {"Var": "name"} | {"Ref": "hash"} | {"Lit": {"Int": 1}} | {"Lit": {"Str": "s"}}
+    | {"Lam": {"params": ["x"], "body": <Expr>}}
+    | {"App": {"func": <Expr>, "args": [<Expr>]}}
+Type: {"Named": "Nat"} | {"Var": "a"} | {"App": ["Result", [<Type>, <Type>]]}
+    | {"Fn": [[<Type>], <Type>]}
+Reference in-scope symbols with {"Var": "<their name>"}.
+Do NOT invent symbols that are not in scope."#;
+
+pub fn build_prompt(task: &Task, arm: Arm, prior_feedback: &[String]) -> String {
+    let mut p = String::new();
+    p.push_str(&format!("Task: {}\n", task.prompt));
+    if arm != Arm::A0 && !task.scope.is_empty() {
+        p.push_str("\nIn-scope symbols (the ONLY callable definitions):\n");
+        for s in &task.scope {
+            if !s.deprecated {
+                p.push_str(&format!("  {} : {}\n", s.name, s.ty));
+            }
+        }
+    }
+    p.push_str(OUTPUT_PROTOCOL);
+    for (i, fb) in prior_feedback.iter().enumerate() {
+        p.push_str(&format!("\n\nAttempt {} failed: {}", i + 1, fb));
+    }
+    p
+}
+
+/// Parse the model's output into definitions. Tolerates code fences.
+pub fn parse_output(raw: &str) -> anyhow::Result<Vec<Def>> {
+    let cleaned = raw
+        .trim()
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim();
+    Ok(serde_json::from_str(cleaned)?)
+}
+
+// ---------------------------------------------------------------------
+// Run loop
+// ---------------------------------------------------------------------
+
+pub struct RunConfig {
+    pub arm: Arm,
+    pub max_retries: u32,
+}
+
+/// Run one task: generate → parse → grade → feed diagnostics back, up to
+/// max_retries. Returns the final grade.
+pub fn run_task(
+    task: &Task,
+    cfg: &RunConfig,
+    generator: &mut dyn Generate,
+) -> anyhow::Result<GradeResult> {
+    if cfg.arm == Arm::A2 {
+        anyhow::bail!("arm A2 requires decode-time mask integration (P2, pending)");
+    }
+    let cdb = task.build_scope_cdb()?;
+    let mut feedback: Vec<String> = Vec::new();
+    let mut last: Option<GradeResult> = None;
+
+    for attempt in 0..=cfg.max_retries {
+        let prompt = build_prompt(task, cfg.arm, &feedback);
+        let raw = generator.generate(&prompt)?;
+        match parse_output(&raw) {
+            Err(e) => {
+                feedback.push(format!("output did not parse as Def JSON: {e}"));
+                // record a failed attempt so an unparseable final round grades as failure
+                last = Some(GradeResult {
+                    task_id: task.id.clone(),
+                    compiled: false,
+                    tests_passed: (0, task.grade.tests.len() as u32),
+                    contracts_held: (0, task.grade.contracts.len() as u32),
+                    forbidden_hit: vec![],
+                    hallucinated_symbols: vec![],
+                    pass: false,
+                    retries_used: attempt,
+                    tokens: generator.tokens_used(),
+                });
+            }
+            Ok(defs) => {
+                let result = grade(task, &defs, &cdb, attempt, generator.tokens_used())?;
+                let done = result.pass || result.compiled;
+                if !done {
+                    feedback.push(format!(
+                        "hallucinated symbols: [{}]. Use only in-scope symbols.",
+                        result.hallucinated_symbols.join(", ")
+                    ));
+                }
+                let finished = result.pass;
+                last = Some(result);
+                if finished {
+                    break;
+                }
+            }
+        }
+    }
+    last.ok_or_else(|| anyhow::anyhow!("no attempts ran"))
+}
+
+// ---------------------------------------------------------------------
+// Reporting
+// ---------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+pub struct Report {
+    pub arm: Arm,
+    pub tasks: usize,
+    pub compiled: usize,
+    pub passed: usize,
+    pub with_hallucinations: usize,
+    pub total_hallucinated_symbols: usize,
+    pub total_tokens: u64,
+    pub results: Vec<GradeResult>,
+}
+
+pub fn aggregate(arm: Arm, results: Vec<GradeResult>) -> Report {
+    Report {
+        arm,
+        tasks: results.len(),
+        compiled: results.iter().filter(|r| r.compiled).count(),
+        passed: results.iter().filter(|r| r.pass).count(),
+        with_hallucinations: results
+            .iter()
+            .filter(|r| !r.hallucinated_symbols.is_empty())
+            .count(),
+        total_hallucinated_symbols: results.iter().map(|r| r.hallucinated_symbols.len()).sum(),
+        total_tokens: results.iter().map(|r| r.tokens).max().unwrap_or(0),
+        results,
+    }
+}
+
+impl Report {
+    pub fn render_table(&self) -> String {
+        let mut s = String::new();
+        s.push_str(&format!(
+            "arm {:?}: {}/{} compiled, {}/{} passed, {} task(s) hallucinated ({} symbols)\n",
+            self.arm,
+            self.compiled,
+            self.tasks,
+            self.passed,
+            self.tasks,
+            self.with_hallucinations,
+            self.total_hallucinated_symbols
+        ));
+        for r in &self.results {
+            s.push_str(&format!(
+                "  {:<24} compiled={} pass={} halluc={:?} retries={}\n",
+                r.task_id, r.compiled, r.pass, r.hallucinated_symbols, r.retries_used
+            ));
+        }
+        s
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use claw_bench_grader::{Category, GradeSpec, ScopeEntry};
+
+    fn task_with_scope() -> Task {
+        Task {
+            id: "double-001".into(),
+            category: Category::FromScratch,
+            prompt: "Define double".into(),
+            scope: vec![ScopeEntry {
+                name: "Nat.add".into(),
+                ty: "Nat, Nat -> Nat".into(),
+                deprecated: false,
+            }],
+            grade: GradeSpec {
+                compile: true,
+                tests: vec![],
+                contracts: vec![],
+                forbidden: vec!["hallucinated-symbol".into()],
+            },
+            reference: None,
+        }
+    }
+
+    /// \x -> Nat.add x x — clean solution, references only in-scope name.
+    fn clean_solution() -> String {
+        serde_json::json!([{
+            "expr": {"Lam": {"params": ["x"],
+                "body": {"App": {"func": {"Var": "Nat.add"},
+                                  "args": [{"Var": "x"}, {"Var": "x"}]}}}},
+            "ty": {"Fn": [[{"Named": "Nat"}], {"Named": "Nat"}]},
+            "effects": [], "deprecated": false, "doc": ""
+        }])
+        .to_string()
+    }
+
+    /// references `magic_double` — a symbol that does not exist.
+    fn hallucinating_solution() -> String {
+        serde_json::json!([{
+            "expr": {"App": {"func": {"Var": "magic_double"}, "args": [{"Lit": {"Int": 2}}]}},
+            "ty": {"Named": "Nat"},
+            "effects": [], "deprecated": false, "doc": ""
+        }])
+        .to_string()
+    }
+
+    #[test]
+    fn clean_run_compiles_and_passes() {
+        let task = task_with_scope();
+        let mut generator = MockGenerator::new(vec![clean_solution()]);
+        let cfg = RunConfig {
+            arm: Arm::A1,
+            max_retries: 0,
+        };
+        let r = run_task(&task, &cfg, &mut generator).unwrap();
+        assert!(r.compiled);
+        assert!(r.pass);
+        assert!(r.hallucinated_symbols.is_empty());
+    }
+
+    #[test]
+    fn hallucination_fails_then_retry_feedback_fixes_it() {
+        let task = task_with_scope();
+        // first response hallucinates, second (after feedback) is clean
+        let mut generator = MockGenerator::new(vec![hallucinating_solution(), clean_solution()]);
+        let cfg = RunConfig {
+            arm: Arm::A1,
+            max_retries: 1,
+        };
+        let r = run_task(&task, &cfg, &mut generator).unwrap();
+        assert!(r.pass, "retry with diagnostic feedback should succeed");
+        assert_eq!(r.retries_used, 1);
+    }
+
+    #[test]
+    fn unparseable_output_grades_as_failure_not_crash() {
+        let task = task_with_scope();
+        let mut generator = MockGenerator::new(vec!["not json at all".into()]);
+        let cfg = RunConfig {
+            arm: Arm::A0,
+            max_retries: 0,
+        };
+        let r = run_task(&task, &cfg, &mut generator).unwrap();
+        assert!(!r.pass);
+        assert!(!r.compiled);
+    }
+
+    #[test]
+    fn a0_prompt_hides_scope_a1_shows_it() {
+        let task = task_with_scope();
+        let p0 = build_prompt(&task, Arm::A0, &[]);
+        let p1 = build_prompt(&task, Arm::A1, &[]);
+        assert!(!p0.contains("Nat.add"), "A0 must not leak scope context");
+        assert!(p1.contains("Nat.add : Nat, Nat -> Nat"));
+    }
+
+    #[test]
+    fn a2_is_explicitly_unimplemented() {
+        let task = task_with_scope();
+        let mut generator = MockGenerator::new(vec![clean_solution()]);
+        let cfg = RunConfig {
+            arm: Arm::A2,
+            max_retries: 0,
+        };
+        assert!(run_task(&task, &cfg, &mut generator).is_err());
+    }
+
+    #[test]
+    fn report_aggregates_the_gate_metrics() {
+        let task = task_with_scope();
+        let cfg = RunConfig {
+            arm: Arm::A1,
+            max_retries: 0,
+        };
+
+        let mut g1 = MockGenerator::new(vec![clean_solution()]);
+        let mut g2 = MockGenerator::new(vec![hallucinating_solution()]);
+        let results = vec![
+            run_task(&task, &cfg, &mut g1).unwrap(),
+            run_task(&task, &cfg, &mut g2).unwrap(),
+        ];
+        let report = aggregate(Arm::A1, results);
+        assert_eq!(report.tasks, 2);
+        assert_eq!(report.compiled, 1);
+        assert_eq!(report.passed, 1);
+        assert_eq!(report.with_hallucinations, 1);
+        assert!(report.render_table().contains("double-001"));
+    }
+}

@@ -6,6 +6,7 @@ members = [
     "diagnostics",
     "constraint-server",
     "bench/grader",
+    "bench/runner",
 ]
 # compiler/ joins the workspace after the Roc vendor + rename pass (P0).
 

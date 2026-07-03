@@ -1,0 +1,24 @@
+{
+  "id": "contract-002",
+  "category": "contract",
+  "prompt": "Implement `withdraw : Account, Nat -> Result Account WithdrawErr` with the contract that a successful withdrawal never leaves a negative balance and fails (never truncates) when amount exceeds balance.",
+  "scope": [
+    { "name": "Account.balance", "ty": "Account -> Nat" },
+    { "name": "Account.withBalance", "ty": "Account, Nat -> Account" },
+    { "name": "Nat.checkedSub", "ty": "Nat, Nat -> Result Nat MathErr" },
+    { "name": "WithdrawErr.insufficient", "ty": "WithdrawErr" },
+    { "name": "Result.ok", "ty": "a -> Result a e" },
+    { "name": "Result.err", "ty": "e -> Result a e" },
+    { "name": "Result.match", "ty": "Result a e, (a -> b), (e -> b) -> b" }
+  ],
+  "grade": {
+    "compile": true,
+    "tests": ["tests/withdraw_spec.claw"],
+    "contracts": [
+      "ok(result) => result.balance == account.balance - amt",
+      "amt > account.balance => err(result)"
+    ],
+    "forbidden": ["hallucinated-symbol"]
+  },
+  "reference": "solutions/contract-002.claw"
+}

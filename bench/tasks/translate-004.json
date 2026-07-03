@@ -1,0 +1,17 @@
+{
+  "id": "translate-004",
+  "category": "translate",
+  "prompt": "Translate this Python to Claw:\n\ndef label(n):\n    return \"even\" if n % 2 == 0 else \"odd\"\n\nTarget signature: `label : Nat -> Str`. Use only in-scope symbols.",
+  "scope": [
+    { "name": "Nat.mod", "ty": "Nat, Nat -> Nat" },
+    { "name": "Nat.isZero", "ty": "Nat -> Bool" },
+    { "name": "Bool.if", "ty": "Bool, a, a -> a" }
+  ],
+  "grade": {
+    "compile": true,
+    "tests": ["tests/label_spec.claw"],
+    "contracts": [],
+    "forbidden": ["hallucinated-symbol"]
+  },
+  "reference": "solutions/translate-004.claw"
+}

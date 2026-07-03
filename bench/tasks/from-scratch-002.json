@@ -1,0 +1,15 @@
+{
+  "id": "from-scratch-002",
+  "category": "from-scratch",
+  "prompt": "Define `greet : Str -> Str` that returns \"Hello, \" followed by the argument and \"!\".",
+  "scope": [
+    { "name": "Str.concat", "ty": "Str, Str -> Str" }
+  ],
+  "grade": {
+    "compile": true,
+    "tests": ["tests/greet_spec.claw"],
+    "contracts": [],
+    "forbidden": ["hallucinated-symbol"]
+  },
+  "reference": "solutions/from-scratch-002.claw"
+}

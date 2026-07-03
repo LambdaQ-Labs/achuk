@@ -1,0 +1,665 @@
+# Glossary
+
+Here you can find definitions for words that are commonly used in the **compiler** along
+with links to the codebase. Check https://www.roc-lang.org/tutorial if you want to know
+about general Roc terms. Feel free to ask for a term to be added or add one yourself!
+
+Contributor note: definitions should be roughly ordered like in a tutorial, e.g.
+Parser should be explained before Canonicalization.
+
+## CLI
+
+Command Line Interface. The entrypoint of the compiler that brings together all
+functionality in the Roc toolset and makes it accessible to the user through the
+terminal, e.g. `roc build main.roc`.
+
+Implementation: [src/cli.main.zig](src/cli/main.zig)
+
+## Module
+
+A .roc file forms one module.
+
+Types of modules:
+- app [(example)](https://github.com/roc-lang/examples/blob/main/examples/HelloWorld/main.roc): Applications are combined with a platform and compiled into an executable.
+- module [(example)](https://github.com/roc-lang/examples/blob/main/examples/MultipleRocFiles/Hello.roc): Provide types and functions which can be imported into other modules.
+- package [(example)](https://github.com/lukewilliamboswell/roc-json/blob/main/package/main.roc): Organises modules to share functionality across applications and platforms.
+- platform [(example)](https://github.com/roc-lang/basic-cli/blob/main/platform/main.roc): Provides memory management and effects like writing to files, network communication,... to interface with the outside world. [Detailed explanation](https://www.roc-lang.org/platforms).
+- hosted [(example)](https://github.com/roc-lang/basic-cli/blob/main/platform/Host.roc): Lists all Roc types and functions provided by the platform.
+
+Implementation: [folder with lots of module related things](src/base)
+
+## IR
+
+(Intermediate Representation)
+
+An abstract code format that sits between the high-level source code and the low-level machine code.
+It is generated after the source code is parsed and before target code is produced. IR makes it easier for the compiler to analyze and optimize programs.
+
+Example for:
+```roc
+module []
+
+foo : U64
+```
+[Token](#tokenization) IR:
+```
+KwModule(1:1-1:7),OpenSquare(1:8-1:9),CloseSquare(1:9-1:10),Newline(1:1-1:1),
+Newline(1:1-1:1),
+LowerIdent(3:1-3:4),OpColon(3:5-3:6),UpperIdent(3:7-3:10),Newline(1:1-1:1)
+```
+[AST](#ast) IR:
+```
+(file
+    (module (1:1-1:10))
+    (type_anno (3:1-4:4)
+        "foo"
+        (tag (3:7-3:10) "U64")))
+```
+
+
+## Interning
+
+A memory optimization technique where only one copy of each distinct value is stored in memory, regardless of how many times it appears in a program or [IR](#ir). For example, a function named `foo` may be called many times in a Roc file, but we store `foo` once and use an index to refer to `foo` at the call sites.
+
+Uses of interning:
+- TODO
+- There are many more uses of interning, I recommend searching for "interner" (case-insensitive).
+
+## Identifier
+
+Any text in a Roc source file that has significant content, but is not a Roc Str like "Hello".
+Used for variable names, record field names, type names, etc. .
+
+During [tokenization](#tokenization) all identifiers are put into a deduplicated collection and given an ID.
+That ID is used in [IRs](#ir) instead of the actual text to save memory.
+
+Identifier in the compiler:
+- [Ident](src/base/Ident.zig)
+- [Ident tokenization](src/parse/tokenize.zig): check the functions `chompIdentLower` and `chompIdentGeneral`, and their uses.
+- [Ident parsing](src/parse/Parser.zig): search `Ident`
+
+## Keyword
+
+A specific word that has a predefined meaning in the language, like `crash`, `if`, `when`, ... .
+Many keywords can not be used as a variable name.
+We have an [overview of all Roc keywords](https://www.roc-lang.org/tutorial#reserved-keywords).
+
+Keywords in the compiler: [tokenize.zig](src/parse/tokenize.zig)
+
+## Operator
+
+An operator is a [symbol](#symbol) or [keyword](#keyword) that performs a specific operation on one or more operands (values or variables) to produce a result.
+Some examples: `+`, `=`, `==`, `>`. [A table of all operators in Roc](https://www.roc-lang.org/tutorial#operator-desugaring-table).
+`+` is an example of binary operator because it works with two operands, e.g. `1 + 1`. Similarly `!` (e.g. `!Bool.false`) is a unary operator.
+
+Operators in the compiler: search `Op` in [tokenize.zig](src/parse/tokenize.zig)
+
+## Syntax
+
+The set of rules that define the correct structure and format of statements, expressions, and code blocks. It specifies how code should be written so that it can be interpreted and executed correctly. In other words, syntax determines how symbols, keywords, and punctuation must be arranged to form valid source code.
+
+Syntax in the compiler: determined by the [tokenizer and parser](src/parse).
+
+## Syntactic Sugar
+
+[Syntax](#syntax) within a programming language that is designed to make things easier to read or express.
+It allows developers to write code in a more concise, readable, or convenient way without adding new functionality
+to the language itself.
+
+Desugaring converts syntax sugar (like `x + 1`) into more fundamental operations (like `Num.add(x, 1)`).
+
+[A table of all operators in Roc and what they desugar to](https://www.roc-lang.org/tutorial#operator-desugaring-table)
+
+Desugaring in the compiler: there is no desugaring, these are implicitly handled by the compiler but not modified into a different form or IR representation.
+
+## Type Signature
+
+Specifies the type of a variable. For example, the type signature of `Str.concat` is:
+```roc
+concat : Str, Str -> Str
+```
+Here it specifies `concat` takes two strings as input and produces one as output.
+
+In the compiler, the type signature specified in the source code has priority over the type found by [type inference](#type-inference), although both need to match for your code to compile completely.
+
+Type annotations are basically the same thing as type signatures and both terms are used interchangeably throughout the compiler.
+
+Type signature in the code base: [Parser.zig](src/parse/Parser.zig) (search signature)
+
+## Type Alias
+
+A way to give a new name to an existing type to make code more readable or meaningful. It doesn't create a new type, just an alternative name for an existing one. For example:
+```roc
+Person : { first_name : Str, last_name : Str }
+
+# Using Person:
+register : Person => Result {} [RegistrationFailed]
+register = |person|
+    ...
+```
+
+Note: the term "alias" in the code base does not always refer to a type alias, it can also refer to an import alias using `as` or [alias analysis](#alias-analysis) etc. .
+
+## Type Variable
+
+A placeholder for a type. It allows generic programming that can make your code work with a collection of types.
+For example:
+```roc
+reverse : List a -> List a
+```
+`reverse` can be done on any kind of list, regardless of the type of the element, so we indicate this with the type variable `a`.
+
+Type variables can also be required to have certain [abilities](https://www.roc-lang.org/abilities), for example:
+```roc
+Graph a := Dict a (List a) where a implements Eq
+```
+
+Type variables don't have to be a single letter, they just have to start with a lowercase letter.
+
+Parsing of type vars: search `ty_var` in [Parser.zig](src/parse/Parser.zig)
+
+## Builtin
+
+A function or type that is natively provided by Roc, for example `Dict.empty`, `List.map`, `Result`, ... .
+You don't need to import any of these to use them.
+
+[Builtin Docs](https://www.roc-lang.org/builtins)
+
+Implementation of builtins: [src/builtins](src/builtins) (work in progress)
+
+Interesting fact: our builtins are integrated into the compiler, there is no typical separate standard library.
+
+## Compiler Phase
+
+A compiler phase is a distinct stage in the process the compiler goes through to translate high-level source code into machine code that a computer can execute. Compilers don't just do this in one big step, they break it down into several phases, each handling a specific task. Some examples of phases: [tokenization](#tokenization), [parsing](#parsing), [code generation](#code-gen),... .
+
+## Compiler Pass
+
+A single traversal through a program's [IR](#ir) that performs a specific transformation or analysis. `insert_reset_reuse_operations` is an example of a compiler pass, it analyzes and modifies the [IR](#IR) to detect when memory is no longer used and allows us to re-use that memory for other things.
+
+Note the difference with a compiler phase; a phase is a larger logical unit of compilation that may include multiple passes.
+
+## Tokenization
+
+The process of breaking down source code into smaller units called tokens. These tokens are the basic building blocks of a programming language, such as [keywords](#Keyword), [identifiers](#identifier), [operators](#operator), and [symbols](#symbol). The input code is scanned character by character and is grouped into meaningful sequences based on the language's syntax rules.
+This step makes [parsing](#parsing) simpler.
+
+Example source code:
+```roc
+module []
+
+foo : U64
+```
+Corresponding tokens:
+```
+KwModule(1:1-1:7),OpenSquare(1:8-1:9),CloseSquare(1:9-1:10),Newline(1:1-1:1),
+Newline(1:1-1:1),
+LowerIdent(3:1-3:4),OpColon(3:5-3:6),UpperIdent(3:7-3:10),Newline(1:1-1:1)
+```
+
+Implementation: [tokenize.zig](src/parse/tokenize.zig)
+
+## AST
+
+(Abstract Syntax Tree)
+
+An AST organizes and represents the source code as a tree-like structure.
+So for the code below:
+```roc
+module []
+
+foo : U64
+```
+
+The AST is:
+```
+(file
+    (module (1:1-1:10))
+    (type_anno (3:1-4:4)
+        "foo"
+        (tag (3:7-3:10) "U64")))
+```
+
+It captures the meaning of the code, while ignoring purely syntactic details like parentheses, commas, semicolons,... .
+Compared to raw source code, this structured format is much easier to analyze and manipulate programmatically by the next compiler phase.
+
+The AST is created by the [parser](#parsing).
+
+Implementation:
+- See the `Node` struct in [this file](src/parse/AST.zig).
+- You can see examples of ASTs in the .txt files in [this folder](test/snapshots).
+
+## Parsing
+
+The step where the compiler checks if the source code follows the correct structure or "grammar" of the programming language. It takes the tokens produced by [tokenization](#tokenization) and organizes them to see if they make sense together, like checking the structure of sentences in a language. If the code is correct, the parser builds a tree-like structure ([AST](#ast)) that shows how the code is organized. If not, it reports errors.
+
+Parser implementation: [src/parse](src/parse)
+
+## Symbol
+
+A symbol points to a specific [identifier](#identifier) with an `ident_id` and a `module_id` ([see module](#module)).
+
+Symbol implementation: Not yet implemented.
+
+## Closure
+
+A function that remembers and can access variables from its outer (enclosing) scope, even after that scope has finished executing. This means the function "closes over" its environment, retaining access to the variables it was created with.
+
+Example of a closure:
+```roc
+# A function that returns a closure
+makeCounter : I64 -> (I64 -> I64)
+makeCounter = |start|
+    # This inner function is a closure - it "closes over" the start variable
+    |increment|
+        start + increment
+
+# Test the closure with expect
+expect
+    counter = makeCounter(10)
+    result = counter(5)
+    result == 15
+```
+
+Closure implementation: Not yet implemented.
+
+## Type Inference
+
+The process of automatically determining the types of expressions without explicit [type annotations](#type-signature) from the programmer.
+The compiler analyzes how values are used in code to deduce their types. For example:
+```roc
+foo = |bar|
+    Num.to_str(bar)
+```
+`foo` has no type annotation so we don't immediately know the type of bar. Later in the function, `Num.to_str` is called on `bar` and we know the type of `to_str` is `Num * -> Str`, so that means `bar` must be a `Num *`! We have now inferred the type of `bar` :tada:
+
+Type inference implementation: Not yet implemented.
+
+## Type constraint
+
+A requirement or restriction that limits what types can be used in a particular context.
+Type constraints express relationships between types that must be satisfied for a program to be well-typed.
+Type constraints can take several forms:
+- Equality constraint: requires types to be the same:
+    + In the expression `a + b`, both `a` and `b` need to have the same type.
+- Try target constraint: requires the expression you use `?` on to be a `Result`:
+    + `Str.from_utf8(byte_list)?`
+- Effect suffix constraint: Your function should have a `!` suffix if it calls an effectful function.
+
+Type constraint implementation: Not yet implemented.
+
+## Type Solving
+
+TODO
+
+## Unification
+
+TODO
+
+## Structural Typing
+
+A type system where type equivalence is based on the shape (the set of members and their types) of the values, not the names by which the types were declared.
+Example:
+```roc
+Person : { first_name : Str, last_name : Str }
+
+User : { first_name : Str, last_name : Str }
+
+register_person! : Person => Result {} [InvalidName]
+register_person! = |person|
+    ...
+
+user : User
+user = { first_name: "Bob", last_name: "Foo"}
+
+# This works even though `register_person!` expects a `Person`, the types have the same structure so they are compatible!
+register_person!(user)
+```
+
+## Nominal Typing
+
+A type system where type equivalence is based on explicit names or declarations, not just structure. Two types are considered the same, only if they have the same name or originate from the same type declaration.
+
+## Let
+
+Roc is inspired by [Elm](https://elm-lang.org), in Elm, variables are defined using `let`:
+```elm
+double arg =
+    let
+        two = 2
+    in
+        arg * two
+```
+This makes the scope of `two` very clear.
+
+In Roc, you can just define variables and use them without `let ... in`, we add `let` behind the scenes.
+
+## Generalized
+
+Say we have the following code:
+```roc
+my_record =
+    id = |x| x
+
+    { a: id(1), b: id("foo") }
+```
+If we would infer the type of `id` to be `Int -> Int`, that would lead to a type error at the next call site `id("foo")`.
+So, we **generalize** the type of `id` to `a -> a`. This allows `id` to be called with any type.
+
+## Rank
+
+In general, the rank tracks the number of [let-bindings](#let) a variable is "under". Top-level definitions
+have rank 1. A [let](#let) inside a top-level definition gets rank 2, and so on.
+
+An example:
+```roc
+foo = 3
+
+plus_five = |arg|
+    x = 5
+    arg + x
+```
+Here the rank of `foo` is 1 because it is at the top level and the rank of `x` is 2 because it is under or inside `plus_five`.
+
+Imported variables get rank 2.
+
+Rank 0 is special, it is used for variables that are [generalized](#generalized).
+
+Keeping track of ranks makes type inference faster.
+
+## Rigid vs Flexible
+
+An identifier is rigid if it has a fixed, concrete name that's written in Roc code. On the other hand, a flexible identifier is one created by the compiler during type inference.
+`a` is rigid below, I defined it. The compiler should use `a` in the error message if there is something wrong with the function's type.
+```roc
+take_first : List a, U64 -> List a
+take_first = |list, output_length|
+    List.sublist(list, { start: 0, len: output_length })
+```
+If I make a type error in the definition:
+```roc
+take_first : U64
+take_first = |list, output_length|
+    List.sublist(list, { start: 0, len: output_length })
+```
+The compiler's error message will say:
+```
+The body is an anonymous function of type:
+
+    List elem, Int Unsigned64 -> List elem
+
+But the type annotation on take_first says it should be:
+
+    U64
+```
+`elem` is a flexible [type variable](#type-variable), the compiler chose that name.
+
+Related definitions in the compiler: search "pub const Content" in [canonicalize/CIR.zig](src/canonicalize/CIR.zig)
+
+## Flat Type
+
+Represents types without indirection, it's the concrete form that types take after
+resolving [variables](#type-variable) and [aliases](#type-alias).
+
+definitions in the compiler: search "pub const FlatType" in [types/types.zig](src/types/types.zig)
+
+## Canonicalization
+
+(can)
+
+After parsing a Roc program, the obtained [IR](#ir) is transformed into a
+canonical form called CanIR.
+
+Canonicalization performs analysis to catch user errors, and sets up the state necessary to figure out
+the types in a program. Among other things, canonicalization;
+- Uniquely identifies names (think variable and function names). Along the way,
+  canonicalization builds a [graph](https://en.wikipedia.org/wiki/Graph_(discrete_mathematics))
+  of all variables' references, and catches unused definitions, undefined definitions, and shadowed definitions.
+- Resolves [type signatures](#type-signature), including [aliases](#type-alias), into a form suitable for [type solving](#type-solving).
+- Determines the order definitions are used in, if they are defined out-of-order.
+- Eliminates syntax sugar (for example, turning `+` into the function call `add`).
+
+Canonicalization occurs on a single module (file) in isolation, so the work can be easily parallelized and cached.
+If the source code for a [module](#module) has not changed, the CanIR can simply be loaded from disk and used immediately.
+
+Implementation of Canonicalization: [canonicalize/mod.zig](src/canonicalize/mod.zig), [canonicalize folder](https://github.com/roc-lang/roc/tree/main/src/canonicalize)
+
+## Lambda Set
+
+TODO
+
+## Monomorphization
+
+(mono, specialization)
+
+Monomorphization, also known as type specialization, is the process of creating a distinct copy
+of each instance of a generic function or value based on all specific usages in a program.
+For example; a function with the type `Num a -> Num a` may only be called in the program with a
+`U64` and a `I64`. Specialization will then create two functions with the types `U64 -> U64` and
+`I64 -> I64`.
+This trades off some compile time for a much better runtime performance, since we don't need to
+look up which implementation to call at runtime (AKA dynamic dispatch).
+
+## Type Checking
+
+TODO
+
+## Reference Count
+
+(refcount)
+
+A memory management technique where each thing in memory has an associated counter that tracks how many references are pointing to that thing.
+
+How it works:
+- Every time a new reference to something is created, their reference counter is incremented.
+- Every time a reference is deleted or goes out of scope, the counter is decremented.
+- When the reference count reaches zero, it means no references are pointing to the thing, so the memory occupied by it can be safely freed.
+
+Roc uses automatic reference counting because it avoids the significant pauses that can happen with traditional [garbage collection](https://en.wikipedia.org/wiki/Garbage_collection_(computer_science)).
+These pauses can be annoying in games for example, because it can result in a noticeable drop in framerate.
+
+Another approach, manual memory management, would allow you to produce the fastest program but it is also more tedious to write code that way.
+
+## Borrow
+
+A **borrowing** function reads its argument without affecting its reference count.
+The caller retains ownership and can continue using the value after the call.
+
+Example builtins that borrow: `strEqual`, `listLen`, `strContains`
+
+See [src/builtins/OWNERSHIP.md](src/builtins/OWNERSHIP.md) for detailed ownership semantics.
+
+## Consume
+
+A **consuming** function takes ownership of its argument. The caller transfers
+ownership to the callee and must not use the argument after the call. The function
+is responsible for cleanup (decref when done).
+
+Example builtins that consume: `strConcat`, `listConcat`, `strJoinWith`
+
+See [src/builtins/OWNERSHIP.md](src/builtins/OWNERSHIP.md) for detailed ownership semantics.
+
+## Copy-on-Write
+
+A variant of consuming where the function may return the same allocation if the
+input is unique (reference count == 1). If the input is shared, the function
+decrefs the original and allocates a new copy.
+
+Example builtins: `strWithAsciiUppercased`, `strTrim`, `listAppend`
+
+## Seamless Slice
+
+A memory optimization where the result shares underlying data with the input
+via a slice that holds a reference to the original allocation.
+
+There are two variants:
+
+1. **Borrowing seamless slice**: The builtin borrows the input and calls `incref`
+   to share the allocation. The interpreter should decref the input after the call.
+   Example: `strToUtf8`
+
+2. **Consuming seamless slice**: The builtin consumes the input and the slice
+   inherits the reference (no incref). The interpreter should NOT decref.
+   Example: `strTrim` (when it creates an offset slice)
+
+See [src/builtins/OWNERSHIP.md](src/builtins/OWNERSHIP.md) for detailed ownership semantics.
+
+## Mutate in place
+
+TODO
+
+## Alias Analysis
+
+TODO
+
+## Backend
+
+TODO
+
+## Code Gen
+
+(code generation)
+
+The [phase](#compiler-phase) where the compiler translates intermediate representation (IR) of a program into target code, usually assembly code.
+This assembly code is not yet ready for execution, it needs to be [linked](#linking) first.
+
+Code Gen implementation: Not done yet.
+
+## Host
+
+TODO
+
+## Heap
+
+TODO
+
+## Stack
+
+TODO
+
+## Boxing
+
+Wrapping a value or function in a generic, opaque representation (box) that can easily be passed to the platform.
+A boxed value is allocated on the [heap](#heap).
+You can box something in Roc with the [builtin](#builtin) [Box.box](https://www.roc-lang.org/builtins/Box#box) and unbox it with [Box.unbox](https://www.roc-lang.org/builtins/Box#unbox).
+
+[Example handling of boxes in basic-cli](https://github.com/search?q=repo%3Aroc-lang%2Fbasic-cli%20Box&type=code).
+
+See also [std::boxed::Box](https://doc.rust-lang.org/std/boxed/struct.Box.html) in Rust.
+
+## Linking
+
+TODO
+
+### Surgical Linker
+
+TODO
+
+### Legacy Linker
+
+TODO
+
+## Glue
+
+TODO
+
+## WASM
+
+TODO
+
+## lhs & rhs
+
+Left & Right Hand Side: for example in `1 + 2`, `1` is on the left hand side and `2` is on the right hand side.
+
+## Span
+
+TODO
+
+## Normalization
+
+TODO
+
+## Joinpoint
+
+(join)
+
+Let's start from this example:
+```roc
+make_cat_or_dog_sound : Bool -> Str
+make_cat_or_dog_sound = |is_dog|
+    sound =
+        if is_dog then
+            "Woof"
+        else
+            "Miauw"
+
+    Str.concat sound "!"
+```
+
+The function from the example above checks the boolean parameter;
+If `is_dog` is true, the "Woof" sound branch is taken, otherwise the "Miauw" branch. Afterwards the branches **join**
+back up and use string concatenation to add an exclamation mark. A naive way to [normalise](#normalization)
+this function would be to add an assignment and `Str.concat ...` to both branches. Like below:
+```roc
+make_cat_or_dog_sound = |is_dog|
+    if is_dog then
+        sound = "Woof"
+        Str.concat sound "!"
+    else
+        sound = "Miauw"
+        Str.concat sound "!"
+```
+However, if we were to use this approach with multiple nested expressions it could result in a very large code size.
+We could put the if-then-else in a function, and call this function with the `is_dog` parameter to
+obtain its sound. But this again comes with downsides:
+- Function calls require additional [stack](#stack) and register manipulation, making them more
+expensive than simple branching.
+- Moving code into functions can make optimization more difficult.
+
+Joinpoints to the rescue:
+```roc
+make_cat_or_dog_sound = |is_dog|
+    joinpoint sound_jp = |sound|
+        Str.concat sound "!"
+    if is_dog then
+        jump sound_jp "Woof"
+    else
+        jump sound_jp "Miauw"
+```
+`sound_jp` is a joinpoint; a labeled code location inside a function that can be "jumped to" from multiple places in the control flow.
+
+Joinpoints provide the best of both worlds:
+- We avoid the code duplication from the naive approach.
+- No need to modify the stack or registers.
+- They simplify control flow by bringing branches back together.
+- They are optimization friendly.
+
+This explanation was adapted from the thesis of J. Teeuwissen: reference counting with reuse in Roc.
+
+Joinpoints in the compiler: Not yet implemented.
+
+## Mutate in Place
+
+TODO
+
+## SExpr
+
+TODO
+
+## Algebraic Data Type
+
+(ADT)
+
+A custom type that can combine these simpler types:
+- Sum Types: a value can be one of several options, for example, with [Result](https://www.roc-lang.org/builtins/Result/) it can be either:
+  - `Ok(something)`
+  - `Err(some_error)`
+- Product Types: multiple pieces of data together, for example, A `Person` record might contain both a `name` and an `age`.
+
+An example of a combination:
+```roc
+NonEmptyList : [Head { x : U64, y : U64 }, Tail (List { x : U64, y : U64 })]
+```
+A `NonEmptyList` value has to be of the type `Head` or `Tail` (Sum) and `{ x : U64, y : U64 }` combines two `U64` (Product).
+
+Note: a sum or product type by itself is also an Algebraic Data Type.

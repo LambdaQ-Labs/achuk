@@ -1,0 +1,150 @@
+on:
+  workflow_call:
+
+name: Cross Compilation Test
+
+# Do not add permissions here! Configure them at the job level!
+permissions: {}
+
+jobs:
+  # Cross-compile all fx platform tests from all host platforms
+  roc-cross-compile:
+    runs-on: ${{ matrix.host }}
+    strategy:
+      fail-fast: false
+      matrix:
+        host: [
+            ubuntu-24.04, # Linux x64 host
+            macos-15-intel, # macOS x64 host
+            macos-15, # macOS ARM64 host
+            windows-2022, # Windows x64 host
+          ]
+        target: [
+            x64musl, # Linux x86_64 musl (static linking)
+            arm64musl, # Linux ARM64 musl (static linking)
+          ]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # 2.2.1
+        with:
+          version: 0.16.0
+          use-cache: true
+
+      - name: Cache Zig dependency packages
+        uses: actions/cache@v4 # ratchet:actions/cache@v4
+        with:
+          # See ci_zig.yml: cache Zig's fetched-package subdir under a stable
+          # build.zig.zon key so a cold runner doesn't re-download deps and hit
+          # transient HttpConnectionClosing fetch failures.
+          path: ${{ env.ZIG_GLOBAL_CACHE_DIR }}/p
+          key: zig-deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build.zig.zon') }}
+          restore-keys: |
+            zig-deps-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Setup MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756  # ratchet:ilammy/msvc-dev-cmd@v1.13.0
+        with:
+          arch: x64
+
+      - name: Build roc compiler and test_runner
+        uses: ./.github/actions/flaky-retry
+        with:
+          command: zig build
+          error_string_contains: "HttpConnectionClosing|build.zig.zon|TemporaryNameServerFailure|error: cannot download|EndOfStream|WriteFailed|503|Timeout|bad HTTP response code"
+          retry_count: 3
+
+      - name: Run fx platform cross-compilation tests (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          echo "Cross-compiling fx tests from ${{ matrix.host }} to ${{ matrix.target }}"
+          ./zig-out/bin/test_runner ./zig-out/bin/roc fx --target=${{ matrix.target }} --mode=cross
+
+      - name: Run fx platform cross-compilation tests (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          echo "Cross-compiling fx tests from ${{ matrix.host }} to ${{ matrix.target }}"
+          zig-out\bin\test_runner.exe zig-out\bin\roc.exe fx --target=${{ matrix.target }} --mode=cross
+
+      - name: Cross-compile int platform test app (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          echo "Cross-compiling int platform from ${{ matrix.host }} to ${{ matrix.target }}"
+          ./zig-out/bin/roc build --target=${{ matrix.target }} --output=int_app_${{ matrix.target }}_${{ matrix.host }} test/int/app.roc
+
+      - name: Cross-compile int platform test app (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          echo "Cross-compiling int platform from ${{ matrix.host }} to ${{ matrix.target }}"
+          zig-out\bin\roc.exe build --target=${{ matrix.target }} --output=int_app_${{ matrix.target }}_${{ matrix.host }} test/int/app.roc
+
+      - name: Upload cross-compiled int app executables
+        uses: actions/upload-artifact@v4 # ratchet:actions/upload-artifact@v4
+        with:
+          name: cross-compiled-${{ matrix.host }}-${{ matrix.target }}
+          path: |
+            int_app_${{ matrix.target }}_*
+          retention-days: 1
+
+  # Test cross-compiled int platform executables on actual target platforms
+  test-int-on-target:
+    needs: [roc-cross-compile]
+    runs-on: ${{ matrix.target_os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Test x64musl executables on Linux x64
+          - target: x64musl
+            target_os: ubuntu-24.04
+            arch: x64
+          # Test arm64musl executables on Linux ARM64
+          - target: arm64musl
+            target_os: ubuntu-24.04-arm
+            arch: arm64
+    steps:
+      - name: Download all cross-compiled artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: cross-compiled-*-${{ matrix.target }}
+          merge-multiple: true
+
+      - name: List downloaded files
+        run: |
+          echo "Downloaded cross-compiled executables:"
+          ls -la *_${{ matrix.target }}* || echo "No files found"
+
+      - name: Test cross-compiled executables from all hosts
+        run: |
+          success_count=0
+          total_count=0
+
+          echo "Testing ${{ matrix.target }} executables on ${{ matrix.target_os }} (${{ matrix.arch }})"
+
+          # Test int apps from all host platforms
+          for int_app in int_app_${{ matrix.target }}_*; do
+            if [ -f "$int_app" ]; then
+              echo ""
+              echo "Testing $int_app:"
+              chmod +x "$int_app"
+              if ./"$int_app"; then
+                echo "✅ $int_app: SUCCESS"
+                success_count=$((success_count + 1))
+              else
+                echo "❌ $int_app: FAILED"
+              fi
+              total_count=$((total_count + 1))
+            fi
+          done
+
+          echo ""
+          echo "Summary: $success_count/$total_count executables passed"
+
+          if [ $success_count -eq $total_count ] && [ $total_count -gt 0 ]; then
+            echo "🎉 All cross-compiled executables work correctly!"
+          else
+            echo "💥 Some cross-compiled executables failed"
+            exit 1
+          fi

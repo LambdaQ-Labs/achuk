@@ -1,0 +1,23 @@
+# Building the new Roc compiler from source
+
+If you run into any problems getting Roc built from source, please ask for help in the `#beginners` channel on [Roc Zulip](https://roc.zulipchat.com) (the fastest way), or create an issue in this repo!
+
+## Recommended way
+
+[Download zig 0.16.0](https://ziglang.org/download/) and add it to your PATH.
+[Search "Setting up PATH"](https://ziglang.org/learn/getting-started/) for more details.
+
+Do a test run with
+```
+zig build roc
+./zig-out/bin/roc version
+```
+
+## Using Nix
+
+If you're familiar with nix and like using it, you can build the compiler like this:
+```
+nix develop ./src
+buildcmd
+./zig-out/bin/roc version
+```

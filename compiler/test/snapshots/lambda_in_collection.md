@@ -1,0 +1,97 @@
+# META
+~~~ini
+description=Lambda inside a collection
+type=expr
+~~~
+# SOURCE
+~~~roc
+(
+	|
+		a,
+		b,
+	| {
+		a + b
+	},
+	|a, b| {
+		a - b
+	},
+)
+~~~
+# EXPECTED
+NIL
+# PROBLEMS
+NIL
+# TOKENS
+~~~zig
+OpenRound,
+OpBar,
+LowerIdent,Comma,
+LowerIdent,Comma,
+OpBar,OpenCurly,
+LowerIdent,OpPlus,LowerIdent,
+CloseCurly,Comma,
+OpBar,LowerIdent,Comma,LowerIdent,OpBar,OpenCurly,
+LowerIdent,OpBinaryMinus,LowerIdent,
+CloseCurly,Comma,
+CloseRound,
+EndOfFile,
+~~~
+# PARSE
+~~~clojure
+(e-tuple
+	(e-lambda
+		(args
+			(p-ident (raw "a"))
+			(p-ident (raw "b")))
+		(e-block
+			(statements
+				(e-binop (op "+")
+					(e-ident (raw "a"))
+					(e-ident (raw "b"))))))
+	(e-lambda
+		(args
+			(p-ident (raw "a"))
+			(p-ident (raw "b")))
+		(e-block
+			(statements
+				(e-binop (op "-")
+					(e-ident (raw "a"))
+					(e-ident (raw "b")))))))
+~~~
+# FORMATTED
+~~~roc
+NO CHANGE
+~~~
+# CANONICALIZE
+~~~clojure
+(e-tuple
+	(elems
+		(e-lambda
+			(args
+				(p-assign (ident "a"))
+				(p-assign (ident "b")))
+			(e-block
+				(e-dispatch-call (method "plus") (constraint-fn-var 21)
+					(receiver
+						(e-lookup-local
+							(p-assign (ident "a"))))
+					(args
+						(e-lookup-local
+							(p-assign (ident "b")))))))
+		(e-lambda
+			(args
+				(p-assign (ident "a"))
+				(p-assign (ident "b")))
+			(e-block
+				(e-dispatch-call (method "minus") (constraint-fn-var 23)
+					(receiver
+						(e-lookup-local
+							(p-assign (ident "a"))))
+					(args
+						(e-lookup-local
+							(p-assign (ident "b")))))))))
+~~~
+# TYPES
+~~~clojure
+(expr (type "(c, d -> c, e, f -> e) where [c.plus : c, d -> c, e.minus : e, f -> e]"))
+~~~

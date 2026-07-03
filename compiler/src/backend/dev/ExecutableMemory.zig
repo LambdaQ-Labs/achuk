@@ -1,0 +1,349 @@
+//! Executable memory allocation and execution.
+//!
+//! This module handles allocating memory, making it executable, and calling it.
+//! It does NOT handle code generation or relocation patching - that's the
+//! caller's responsibility.
+
+const std = @import("std");
+const Allocator = std.mem.Allocator;
+const builtin = @import("builtin");
+
+// std.os.windows.VirtualAlloc / VirtualFree / VirtualProtect were removed in Zig 0.16.
+// Declare the thin extern bindings we need locally; only referenced on Windows.
+const win32 = struct {
+    const DWORD = u32;
+    const SIZE_T = usize;
+    const LPVOID = ?*anyopaque;
+    const PDWORD = *DWORD;
+
+    const MEM_COMMIT: DWORD = 0x1000;
+    const MEM_RESERVE: DWORD = 0x2000;
+    const MEM_RELEASE: DWORD = 0x8000;
+    const PAGE_READWRITE: DWORD = 0x04;
+    const PAGE_EXECUTE_READ: DWORD = 0x20;
+
+    extern "kernel32" fn VirtualAlloc(
+        lpAddress: LPVOID,
+        dwSize: SIZE_T,
+        flAllocationType: DWORD,
+        flProtect: DWORD,
+    ) callconv(.winapi) LPVOID;
+    extern "kernel32" fn VirtualFree(
+        lpAddress: LPVOID,
+        dwSize: SIZE_T,
+        dwFreeType: DWORD,
+    ) callconv(.winapi) std.os.windows.BOOL;
+    extern "kernel32" fn VirtualProtect(
+        lpAddress: LPVOID,
+        dwSize: SIZE_T,
+        flNewProtect: DWORD,
+        lpflOldProtect: PDWORD,
+    ) callconv(.winapi) std.os.windows.BOOL;
+};
+
+/// A region of memory that can be executed as code.
+pub const ExecutableMemory = struct {
+    /// The executable memory region
+    memory: []align(std.heap.page_size_min) u8,
+    /// Size of the actual code (may be less than memory.len due to page alignment)
+    code_size: usize,
+    /// Offset from start where execution should begin (for compiled procedures)
+    entry_offset: usize,
+
+    const Self = @This();
+
+    /// Allocate executable memory and copy the given code into it.
+    /// The code bytes should already have any relocations applied.
+    pub fn init(code: []const u8) (Allocator.Error || error{ EmptyCode, MmapFailed, VirtualAllocFailed, MprotectFailed, VirtualProtectFailed, UnsupportedPlatform })!Self {
+        return initWithEntryOffset(code, 0);
+    }
+
+    /// Allocate executable memory with a specific entry offset.
+    /// Use this when procedures are compiled before the main expression.
+    pub fn initWithEntryOffset(code: []const u8, entry_offset: usize) (Allocator.Error || error{ EmptyCode, MmapFailed, VirtualAllocFailed, MprotectFailed, VirtualProtectFailed, UnsupportedPlatform })!Self {
+        if (code.len == 0) {
+            return error.EmptyCode;
+        }
+
+        // Round up to page size
+        const page_size = std.heap.page_size_min;
+        const alloc_size = std.mem.alignForward(usize, code.len, page_size);
+
+        // Allocate memory with read-write permissions initially
+        const memory = try allocateMemory(alloc_size);
+        errdefer freeMemory(memory);
+
+        // Copy the code
+        @memcpy(memory[0..code.len], code);
+
+        // Make the memory executable (and read-only)
+        try protectExecutable(memory);
+
+        return Self{
+            .memory = memory,
+            .code_size = code.len,
+            .entry_offset = entry_offset,
+        };
+    }
+
+    /// Allocate writable memory that the caller will fill and relocate before
+    /// marking it executable.
+    pub fn initWritable(total_size: usize, code_size: usize, entry_offset: usize) (Allocator.Error || error{ EmptyCode, MmapFailed, VirtualAllocFailed, UnsupportedPlatform })!Self {
+        if (total_size == 0 or code_size == 0) {
+            return error.EmptyCode;
+        }
+
+        const page_size = std.heap.page_size_min;
+        const alloc_size = std.mem.alignForward(usize, total_size, page_size);
+        const memory = try allocateMemory(alloc_size);
+
+        return Self{
+            .memory = memory,
+            .code_size = code_size,
+            .entry_offset = entry_offset,
+        };
+    }
+
+    /// Mark a writable allocation returned by `initWritable` executable.
+    pub fn finishWrite(self: *Self) error{ MprotectFailed, VirtualProtectFailed, UnsupportedPlatform }!void {
+        try protectExecutable(self.memory);
+    }
+
+    /// Free the executable memory
+    pub fn deinit(self: *Self) void {
+        freeMemory(self.memory);
+        self.memory = &.{};
+        self.code_size = 0;
+    }
+
+    /// Get a pointer to the start of the code
+    pub fn codePtr(self: *const Self) [*]const u8 {
+        return self.memory.ptr;
+    }
+
+    /// Get a pointer to the entry point (may differ from codePtr if entry_offset is non-zero)
+    pub fn entryPtr(self: *const Self) [*]const u8 {
+        return self.memory.ptr + self.entry_offset;
+    }
+
+    /// Call the code as a function that takes no arguments and returns i64
+    pub fn callReturnI64(self: *const Self) i64 {
+        const func: *const fn () callconv(.c) i64 = @ptrCast(@alignCast(self.entryPtr()));
+        return func();
+    }
+
+    /// Call the code as a function that takes no arguments and returns u64
+    pub fn callReturnU64(self: *const Self) u64 {
+        const func: *const fn () callconv(.c) u64 = @ptrCast(@alignCast(self.entryPtr()));
+        return func();
+    }
+
+    /// Call the code as a function that takes no arguments and returns f64
+    pub fn callReturnF64(self: *const Self) f64 {
+        const func: *const fn () callconv(.c) f64 = @ptrCast(@alignCast(self.entryPtr()));
+        return func();
+    }
+
+    /// Call using the RocCall ABI: fn(roc_ops, ret_ptr, args_ptr) callconv(.c) void
+    pub fn callRocABI(self: *const Self, roc_ops: *anyopaque, ret_ptr: *anyopaque, args_ptr: ?*anyopaque) void {
+        self.callRocABIAt(self.entry_offset, roc_ops, ret_ptr, args_ptr);
+    }
+
+    /// Call using the RocCall ABI at a specific code offset.
+    pub fn callRocABIAt(self: *const Self, entry_offset: usize, roc_ops: *anyopaque, ret_ptr: *anyopaque, args_ptr: ?*anyopaque) void {
+        const func: *const fn (*anyopaque, *anyopaque, ?*anyopaque) callconv(.c) void =
+            @ptrCast(@alignCast(self.memory.ptr + entry_offset));
+        func(roc_ops, ret_ptr, args_ptr);
+    }
+};
+
+/// Allocate memory that can be made executable
+fn allocateMemory(size: usize) (Allocator.Error || error{ MmapFailed, VirtualAllocFailed, UnsupportedPlatform })![]align(std.heap.page_size_min) u8 {
+    switch (builtin.os.tag) {
+        .macos, .ios, .tvos, .watchos, .linux, .freebsd, .openbsd, .netbsd => {
+            const prot: std.posix.PROT = .{ .READ = true, .WRITE = true };
+            const flags = std.posix.MAP{ .TYPE = .PRIVATE, .ANONYMOUS = true };
+            const result = std.posix.mmap(null, size, prot, flags, -1, 0) catch {
+                return error.MmapFailed;
+            };
+            return @alignCast(result[0..size]);
+        },
+        .windows => {
+            const mem = win32.VirtualAlloc(
+                null,
+                size,
+                win32.MEM_COMMIT | win32.MEM_RESERVE,
+                win32.PAGE_READWRITE,
+            ) orelse return error.VirtualAllocFailed;
+            const ptr: [*]align(std.heap.page_size_min) u8 = @ptrCast(@alignCast(mem));
+            return ptr[0..size];
+        },
+        else => return error.UnsupportedPlatform,
+    }
+}
+
+/// Make the memory executable
+fn protectExecutable(memory: []align(std.heap.page_size_min) u8) error{ MprotectFailed, VirtualProtectFailed, UnsupportedPlatform }!void {
+    switch (builtin.os.tag) {
+        .macos, .ios, .tvos, .watchos, .linux, .freebsd, .openbsd, .netbsd => {
+            const prot: std.posix.PROT = .{ .READ = true, .EXEC = true };
+            if (std.c.mprotect(@ptrCast(memory.ptr), memory.len, prot) != 0) return error.MprotectFailed;
+        },
+        .windows => {
+            var old_protect: win32.DWORD = undefined;
+            if (win32.VirtualProtect(
+                memory.ptr,
+                memory.len,
+                win32.PAGE_EXECUTE_READ,
+                &old_protect,
+            ) == .FALSE) return error.VirtualProtectFailed;
+        },
+        else => return error.UnsupportedPlatform,
+    }
+}
+
+/// Free executable memory
+fn freeMemory(memory: []align(std.heap.page_size_min) u8) void {
+    switch (builtin.os.tag) {
+        .macos, .ios, .tvos, .watchos, .linux, .freebsd, .openbsd, .netbsd => {
+            std.posix.munmap(memory);
+        },
+        .windows => {
+            _ = win32.VirtualFree(memory.ptr, 0, win32.MEM_RELEASE);
+        },
+        // allocateMemory returns error.UnsupportedPlatform for other OSes,
+        // so freeMemory should never be called on them
+        else => unreachable,
+    }
+}
+
+// Tests
+
+test "execute simple x86_64 code" {
+    if (builtin.cpu.arch != .x86_64) return error.SkipZigTest;
+
+    // mov eax, 42; ret
+    const code = [_]u8{ 0xB8, 0x2A, 0x00, 0x00, 0x00, 0xC3 };
+
+    var mem = try ExecutableMemory.init(&code);
+    defer mem.deinit();
+
+    const result = mem.callReturnI64();
+    try std.testing.expectEqual(@as(i64, 42), result);
+}
+
+test "execute x86_64 return 64-bit value" {
+    if (builtin.cpu.arch != .x86_64) return error.SkipZigTest;
+
+    // movabs rax, 0x123456789ABCDEF0; ret
+    const code = [_]u8{ 0x48, 0xB8, 0xF0, 0xDE, 0xBC, 0x9A, 0x78, 0x56, 0x34, 0x12, 0xC3 };
+
+    var mem = try ExecutableMemory.init(&code);
+    defer mem.deinit();
+
+    const result = mem.callReturnU64();
+    try std.testing.expectEqual(@as(u64, 0x123456789ABCDEF0), result);
+}
+
+test "execute aarch64 code" {
+    if (builtin.cpu.arch != .aarch64) return error.SkipZigTest;
+
+    // mov w0, #42; ret
+    const code = [_]u8{ 0x40, 0x05, 0x80, 0x52, 0xC0, 0x03, 0x5F, 0xD6 };
+
+    var mem = try ExecutableMemory.init(&code);
+    defer mem.deinit();
+
+    const result = mem.callReturnI64();
+    try std.testing.expectEqual(@as(i64, 42), result);
+}
+
+test "execute x86_64 with result ptr" {
+    if (builtin.cpu.arch != .x86_64) return error.SkipZigTest;
+
+    // Roc ABI: fn(roc_ops, result_ptr, args_ptr)
+    // Windows x64: RCX = roc_ops (ignored), RDX = result_ptr
+    // System V: RDI = roc_ops (ignored), RSI = result_ptr
+    // mov qword [arg1], 42; ret
+    const code = if (builtin.os.tag == .windows)
+        // Windows: mov qword ptr [rdx], 42; ret
+        [_]u8{ 0x48, 0xC7, 0x02, 0x2A, 0x00, 0x00, 0x00, 0xC3 }
+    else
+        // System V: mov qword ptr [rsi], 42; ret
+        [_]u8{ 0x48, 0xC7, 0x06, 0x2A, 0x00, 0x00, 0x00, 0xC3 };
+
+    var mem = try ExecutableMemory.init(&code);
+    defer mem.deinit();
+
+    var result: i64 = 0;
+    var dummy_roc_ops: u64 = 0xDEADBEEF;
+    mem.callRocABI(@ptrCast(&dummy_roc_ops), @ptrCast(&result), null);
+    try std.testing.expectEqual(@as(i64, 42), result);
+}
+
+test "execute x86_64 with full prologue/epilogue" {
+    if (builtin.cpu.arch != .x86_64) return error.SkipZigTest;
+
+    // This mimics the generated code structure:
+    // - Prologue: push rbp; mov rbp,rsp; push rbx; push r12; sub rsp,1024
+    // - Save args: mov rbx, rdx/rsi (result ptr); mov r12, rcx/rdi (roc_ops - ignored)
+    // - Compute: mov rax, 42
+    // - Store result: mov [rbx], rax
+    // - Epilogue: add rsp,1024; pop r12; pop rbx; pop rbp; ret
+
+    const code = if (builtin.os.tag == .windows) blk: {
+        // Windows x64: RCX = roc_ops, RDX = result_ptr
+        break :blk [_]u8{
+            // Prologue
+            0x55, // push rbp
+            0x48, 0x89, 0xE5, // mov rbp, rsp
+            0x53, // push rbx
+            0x41, 0x54, // push r12
+            0x48, 0x81, 0xEC, 0x00, 0x04, 0x00, 0x00, // sub rsp, 1024
+            // Save args
+            0x48, 0x89, 0xD3, // mov rbx, rdx (result ptr)
+            0x49, 0x89, 0xCC, // mov r12, rcx (roc_ops)
+            // Compute result
+            0x48, 0xC7, 0xC0, 0x2A, 0x00, 0x00, 0x00, // mov rax, 42
+            // Store to result ptr
+            0x48, 0x89, 0x03, // mov [rbx], rax
+            // Epilogue
+            0x48, 0x81, 0xC4, 0x00, 0x04, 0x00, 0x00, // add rsp, 1024
+            0x41, 0x5C, // pop r12
+            0x5B, // pop rbx
+            0x5D, // pop rbp
+            0xC3, // ret
+        };
+    } else blk: {
+        // System V: RDI = roc_ops, RSI = result_ptr
+        break :blk [_]u8{
+            // Prologue
+            0x55, // push rbp
+            0x48, 0x89, 0xE5, // mov rbp, rsp
+            0x53, // push rbx
+            0x41, 0x54, // push r12
+            0x48, 0x81, 0xEC, 0x00, 0x04, 0x00, 0x00, // sub rsp, 1024
+            // Save args
+            0x48, 0x89, 0xF3, // mov rbx, rsi (result ptr)
+            0x49, 0x89, 0xFC, // mov r12, rdi (roc_ops)
+            // Compute result
+            0x48, 0xC7, 0xC0, 0x2A, 0x00, 0x00, 0x00, // mov rax, 42
+            // Store to result ptr
+            0x48, 0x89, 0x03, // mov [rbx], rax
+            // Epilogue
+            0x48, 0x81, 0xC4, 0x00, 0x04, 0x00, 0x00, // add rsp, 1024
+            0x41, 0x5C, // pop r12
+            0x5B, // pop rbx
+            0x5D, // pop rbp
+            0xC3, // ret
+        };
+    };
+
+    var mem = try ExecutableMemory.init(&code);
+    defer mem.deinit();
+
+    var result: i64 = 0;
+    var dummy_roc_ops: u64 = 0xDEADBEEF;
+    mem.callRocABI(@ptrCast(&dummy_roc_ops), @ptrCast(&result), null);
+    try std.testing.expectEqual(@as(i64, 42), result);
+}

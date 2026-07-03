@@ -1,0 +1,92 @@
+# META
+~~~ini
+description=Simple platform module with for-clause syntax
+type=file
+~~~
+# SOURCE
+~~~roc
+platform ""
+    requires {
+        main : Str -> Str
+    }
+    exposes []
+    packages {}
+    provides { "roc_roc__entrypoint": entrypoint }
+
+entrypoint : Str -> Str
+entrypoint = main
+~~~
+# EXPECTED
+NIL
+# PROBLEMS
+NIL
+# TOKENS
+~~~zig
+KwPlatform,StringStart,StringPart,StringEnd,
+KwRequires,OpenCurly,
+LowerIdent,OpColon,UpperIdent,OpArrow,UpperIdent,
+CloseCurly,
+KwExposes,OpenSquare,CloseSquare,
+KwPackages,OpenCurly,CloseCurly,
+KwProvides,OpenCurly,StringStart,StringPart,StringEnd,OpColon,LowerIdent,CloseCurly,
+LowerIdent,OpColon,UpperIdent,OpArrow,UpperIdent,
+LowerIdent,OpAssign,LowerIdent,
+EndOfFile,
+~~~
+# PARSE
+~~~clojure
+(file
+	(platform (name "")
+		(requires
+			(requires-entry
+				(type-aliases)
+				(entrypoint "main")
+				(ty-fn
+					(ty (name "Str"))
+					(ty (name "Str")))))
+		(exposes)
+		(packages)
+		(provides
+			(symbol-map-entry (symbol "roc_roc__entrypoint") (func "entrypoint"))))
+	(statements
+		(s-type-anno (name "entrypoint")
+			(ty-fn
+				(ty (name "Str"))
+				(ty (name "Str"))))
+		(s-decl
+			(p-ident (raw "entrypoint"))
+			(e-ident (raw "main")))))
+~~~
+# FORMATTED
+~~~roc
+platform ""
+	requires {
+		main : Str -> Str
+	}
+	exposes []
+	packages {}
+	provides { "roc_roc__entrypoint": entrypoint }
+
+entrypoint : Str -> Str
+entrypoint = main
+~~~
+# CANONICALIZE
+~~~clojure
+(can-ir
+	(d-let
+		(p-assign (ident "entrypoint"))
+		(e-lookup-required
+			(required-ident "main"))
+		(annotation
+			(ty-fn (effectful false)
+				(ty-lookup (name "Str") (builtin))
+				(ty-lookup (name "Str") (builtin))))))
+~~~
+# TYPES
+~~~clojure
+(inferred-types
+	(defs
+		(patt (type "Str -> Str")))
+	(expressions
+		(expr (type "Str -> Str"))))
+~~~

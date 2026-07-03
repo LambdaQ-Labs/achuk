@@ -1,0 +1,97 @@
+# META
+~~~ini
+description=Mono test: top-level constants are never captured by lambdas
+type=mono
+~~~
+# SOURCE
+~~~roc
+one = 1
+
+add_one = |x| x + one
+
+result = add_one(5)
+~~~
+# MONO
+~~~roc
+one : Dec
+one = 1
+
+add_one = |x| x + one
+
+result : Dec
+result = add_one(5)
+~~~
+# FORMATTED
+~~~roc
+NO CHANGE
+~~~
+# EXPECTED
+NIL
+# PROBLEMS
+NIL
+# TOKENS
+~~~zig
+LowerIdent,OpAssign,Int,
+LowerIdent,OpAssign,OpBar,LowerIdent,OpBar,LowerIdent,OpPlus,LowerIdent,
+LowerIdent,OpAssign,LowerIdent,NoSpaceOpenRound,Int,CloseRound,
+EndOfFile,
+~~~
+# PARSE
+~~~clojure
+(file
+	(type-module)
+	(statements
+		(s-decl
+			(p-ident (raw "one"))
+			(e-int (raw "1")))
+		(s-decl
+			(p-ident (raw "add_one"))
+			(e-lambda
+				(args
+					(p-ident (raw "x")))
+				(e-binop (op "+")
+					(e-ident (raw "x"))
+					(e-ident (raw "one")))))
+		(s-decl
+			(p-ident (raw "result"))
+			(e-apply
+				(e-ident (raw "add_one"))
+				(e-int (raw "5"))))))
+~~~
+# CANONICALIZE
+~~~clojure
+(can-ir
+	(d-let
+		(p-assign (ident "one"))
+		(e-num (value "1")))
+	(d-let
+		(p-assign (ident "add_one"))
+		(e-lambda
+			(args
+				(p-assign (ident "x")))
+			(e-dispatch-call (method "plus") (constraint-fn-var 54)
+				(receiver
+					(e-lookup-local
+						(p-assign (ident "x"))))
+				(args
+					(e-lookup-local
+						(p-assign (ident "one")))))))
+	(d-let
+		(p-assign (ident "result"))
+		(e-call (constraint-fn-var 92)
+			(e-lookup-local
+				(p-assign (ident "add_one")))
+			(e-num (value "5")))))
+~~~
+# TYPES
+~~~clojure
+(inferred-types
+	(defs
+		(patt (type "Dec"))
+		(patt (type "a -> a where [a.plus : a, Dec -> a]"))
+		(patt (type "Dec")))
+	(expressions
+		(expr (type "Dec"))
+		(expr (type "a -> a where [a.plus : a, Dec -> a]"))
+		(expr (type "Dec"))))
+~~~

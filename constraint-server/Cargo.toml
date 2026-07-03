@@ -1,0 +1,12 @@
+[package]
+name = "claw-constraint"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+claw-core = { path = "../crates/claw-core" }
+claw-cdb = { path = "../cdb" }
+claw-diagnostics = { path = "../diagnostics" }
+serde = { workspace = true }
+serde_json = { workspace = true }

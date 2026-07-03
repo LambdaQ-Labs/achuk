@@ -1,0 +1,430 @@
+//! Cross-module type copying for imports.
+//!
+//! This module provides functionality to copy types from one module's type store
+//! to another module's type store when importing. This ensures each module maintains
+//! its own consistent type variable namespace while still being able to use types
+//! from other modules.
+
+const std = @import("std");
+const base = @import("base");
+const types_mod = @import("types");
+
+const TypesStore = types_mod.Store;
+const Var = types_mod.Var;
+const Flex = types_mod.Flex;
+const Rigid = types_mod.Rigid;
+const StaticDispatchConstraint = types_mod.StaticDispatchConstraint;
+const Content = types_mod.Content;
+const FlatType = types_mod.FlatType;
+const Alias = types_mod.Alias;
+const Func = types_mod.Func;
+const Record = types_mod.Record;
+const TagUnion = types_mod.TagUnion;
+const RecordField = types_mod.RecordField;
+const Tag = types_mod.Tag;
+const NominalType = types_mod.NominalType;
+
+/// A mapping from source type variables to destination type variables
+/// This is only used during the copy operation to ensure consistent mapping
+/// of type variables that appear multiple times in the same type structure.
+const VarMapping = std.AutoHashMap(Var, Var);
+
+fn copyImportedIdent(
+    source_idents: *const base.Ident.Store,
+    dest_idents: *base.Ident.Store,
+    source_ident: base.Ident.Idx,
+    allocator: std.mem.Allocator,
+) std.mem.Allocator.Error!base.Ident.Idx {
+    const text = source_idents.getText(source_ident);
+    const source_ident_value = base.Ident.for_text(text);
+    if (dest_idents.lookup(source_ident_value)) |existing| return existing;
+    return try dest_idents.insert(allocator, source_ident_value);
+}
+
+/// Copy a type from one module's type store to another module's type store.
+/// This creates a completely fresh copy with new variable indices in the destination store.
+///
+/// Imported identifiers are interned directly into the destination module's
+/// authoritative identifier store so all copied types in that module reference
+/// one consistent `Ident.Store`.
+pub fn copyVar(
+    source_store: *const TypesStore,
+    dest_store: *TypesStore,
+    source_var: Var,
+    var_mapping: *VarMapping,
+    source_idents: *const base.Ident.Store,
+    dest_idents: *base.Ident.Store,
+    allocator: std.mem.Allocator,
+) std.mem.Allocator.Error!Var {
+    const resolved = source_store.resolveVar(source_var);
+
+    if (var_mapping.get(resolved.var_)) |dest_var| {
+        return dest_var;
+    }
+
+    const placeholder_var = try dest_store.fresh();
+    try var_mapping.put(resolved.var_, placeholder_var);
+
+    const dest_content = try copyContent(
+        source_store,
+        dest_store,
+        resolved.desc.content,
+        var_mapping,
+        source_idents,
+        dest_idents,
+        allocator,
+    );
+
+    try dest_store.dangerousSetVarDesc(placeholder_var, .{
+        .content = dest_content,
+        .rank = types_mod.Rank.generalized,
+    });
+
+    // NOTE: a copied var whose content is a flex carrying a literal-conversion
+    // constraint is an open literal in the destination module. Registering it on
+    // the checker's open-literal worklist is the CALLER's job (see `Check.copyVar`,
+    // which walks `var_mapping` after the copy) — this module only copies type
+    // data between stores.
+    return placeholder_var;
+}
+
+fn copyContent(
+    source_store: *const TypesStore,
+    dest_store: *TypesStore,
+    content: Content,
+    var_mapping: *VarMapping,
+    source_idents: *const base.Ident.Store,
+    dest_idents: *base.Ident.Store,
+    allocator: std.mem.Allocator,
+) std.mem.Allocator.Error!Content {
+    return switch (content) {
+        .flex => |flex| Content{ .flex = try copyFlex(source_store, dest_store, flex, var_mapping, source_idents, dest_idents, allocator) },
+        .rigid => |rigid| Content{ .rigid = try copyRigid(source_store, dest_store, rigid, var_mapping, source_idents, dest_idents, allocator) },
+        .alias => |alias| Content{ .alias = try copyAlias(source_store, dest_store, alias, var_mapping, source_idents, dest_idents, allocator) },
+        .structure => |flat_type| Content{ .structure = try copyFlatType(source_store, dest_store, flat_type, var_mapping, source_idents, dest_idents, allocator) },
+        .err => Content.err,
+    };
+}
+
+fn copyFlex(
+    source_store: *const TypesStore,
+    dest_store: *TypesStore,
+    source_flex: Flex,
+    var_mapping: *VarMapping,
+    source_idents: *const base.Ident.Store,
+    dest_idents: *base.Ident.Store,
+    allocator: std.mem.Allocator,
+) std.mem.Allocator.Error!Flex {
+    const mb_translated_name = if (source_flex.name) |name_ident|
+        try copyImportedIdent(source_idents, dest_idents, name_ident, allocator)
+    else
+        null;
+
+    const dest_constraints_range = try copyStaticDispatchConstraints(
+        source_store,
+        dest_store,
+        source_flex.constraints,
+        var_mapping,
+        source_idents,
+        dest_idents,
+        allocator,
+    );
+
+    return Flex{
+        .name = mb_translated_name,
+        .constraints = dest_constraints_range,
+    };
+}
+
+fn copyRigid(
+    source_store: *const TypesStore,
+    dest_store: *TypesStore,
+    source_rigid: Rigid,
+    var_mapping: *VarMapping,
+    source_idents: *const base.Ident.Store,
+    dest_idents: *base.Ident.Store,
+    allocator: std.mem.Allocator,
+) std.mem.Allocator.Error!Rigid {
+    const translated_name = try copyImportedIdent(source_idents, dest_idents, source_rigid.name, allocator);
+
+    const dest_constraints_range = try copyStaticDispatchConstraints(
+        source_store,
+        dest_store,
+        source_rigid.constraints,
+        var_mapping,
+        source_idents,
+        dest_idents,
+        allocator,
+    );
+
+    return Rigid{
+        .name = translated_name,
+        .constraints = dest_constraints_range,
+    };
+}
+
+fn copyAlias(
+    source_store: *const TypesStore,
+    dest_store: *TypesStore,
+    source_alias: Alias,
+    var_mapping: *VarMapping,
+    source_idents: *const base.Ident.Store,
+    dest_idents: *base.Ident.Store,
+    allocator: std.mem.Allocator,
+) std.mem.Allocator.Error!Alias {
+    const translated_ident = try copyImportedIdent(source_idents, dest_idents, source_alias.ident.ident_idx, allocator);
+
+    var dest_args = std.ArrayList(Var).empty;
+    defer dest_args.deinit(dest_store.gpa);
+
+    const origin_backing = source_store.getAliasBackingVar(source_alias);
+    const dest_backing = try copyVar(source_store, dest_store, origin_backing, var_mapping, source_idents, dest_idents, allocator);
+    try dest_args.append(dest_store.gpa, dest_backing);
+
+    const origin_args = source_store.sliceAliasArgs(source_alias);
+    for (origin_args) |arg_var| {
+        const dest_arg = try copyVar(source_store, dest_store, arg_var, var_mapping, source_idents, dest_idents, allocator);
+        try dest_args.append(dest_store.gpa, dest_arg);
+    }
+
+    const dest_vars_span = try dest_store.appendVars(dest_args.items);
+    const translated_module_ident = try copyImportedIdent(source_idents, dest_idents, source_alias.origin_module, allocator);
+
+    return Alias{
+        .ident = types_mod.TypeIdent{ .ident_idx = translated_ident },
+        .vars = .{ .nonempty = dest_vars_span },
+        .origin_module = translated_module_ident,
+        .source_decl = source_alias.source_decl,
+    };
+}
+
+fn copyFlatType(
+    source_store: *const TypesStore,
+    dest_store: *TypesStore,
+    flat_type: FlatType,
+    var_mapping: *VarMapping,
+    source_idents: *const base.Ident.Store,
+    dest_idents: *base.Ident.Store,
+    allocator: std.mem.Allocator,
+) std.mem.Allocator.Error!FlatType {
+    return switch (flat_type) {
+        .tuple => |tuple| FlatType{ .tuple = try copyTuple(source_store, dest_store, tuple, var_mapping, source_idents, dest_idents, allocator) },
+        .nominal_type => |nominal| FlatType{ .nominal_type = try copyNominalType(source_store, dest_store, nominal, var_mapping, source_idents, dest_idents, allocator) },
+        .fn_pure => |func| FlatType{ .fn_pure = try copyFunc(source_store, dest_store, func, var_mapping, source_idents, dest_idents, allocator) },
+        .fn_effectful => |func| FlatType{ .fn_effectful = try copyFunc(source_store, dest_store, func, var_mapping, source_idents, dest_idents, allocator) },
+        .fn_unbound => |func| FlatType{ .fn_unbound = try copyFunc(source_store, dest_store, func, var_mapping, source_idents, dest_idents, allocator) },
+        .record => |record| FlatType{ .record = try copyRecord(source_store, dest_store, record, var_mapping, source_idents, dest_idents, allocator) },
+        .tag_union => |tag_union| FlatType{ .tag_union = try copyTagUnion(source_store, dest_store, tag_union, var_mapping, source_idents, dest_idents, allocator) },
+        .record_unbound => |fields| FlatType{ .record_unbound = try copyRecordFields(source_store, dest_store, fields, var_mapping, source_idents, dest_idents, allocator) },
+        .empty_record => FlatType.empty_record,
+        .empty_tag_union => FlatType.empty_tag_union,
+    };
+}
+
+fn copyTuple(
+    source_store: *const TypesStore,
+    dest_store: *TypesStore,
+    tuple: types_mod.Tuple,
+    var_mapping: *VarMapping,
+    source_idents: *const base.Ident.Store,
+    dest_idents: *base.Ident.Store,
+    allocator: std.mem.Allocator,
+) std.mem.Allocator.Error!types_mod.Tuple {
+    const elems_slice = source_store.sliceVars(tuple.elems);
+
+    var dest_elems = std.ArrayList(Var).empty;
+    defer dest_elems.deinit(dest_store.gpa);
+
+    for (elems_slice) |elem_var| {
+        const dest_elem = try copyVar(source_store, dest_store, elem_var, var_mapping, source_idents, dest_idents, allocator);
+        try dest_elems.append(dest_store.gpa, dest_elem);
+    }
+
+    const dest_range = try dest_store.appendVars(dest_elems.items);
+    return types_mod.Tuple{ .elems = dest_range };
+}
+
+fn copyFunc(
+    source_store: *const TypesStore,
+    dest_store: *TypesStore,
+    func: Func,
+    var_mapping: *VarMapping,
+    source_idents: *const base.Ident.Store,
+    dest_idents: *base.Ident.Store,
+    allocator: std.mem.Allocator,
+) std.mem.Allocator.Error!Func {
+    const args_slice = source_store.sliceVars(func.args);
+
+    var dest_args = std.ArrayList(Var).empty;
+    defer dest_args.deinit(dest_store.gpa);
+
+    for (args_slice) |arg_var| {
+        const dest_arg = try copyVar(source_store, dest_store, arg_var, var_mapping, source_idents, dest_idents, allocator);
+        try dest_args.append(dest_store.gpa, dest_arg);
+    }
+
+    const dest_ret = try copyVar(source_store, dest_store, func.ret, var_mapping, source_idents, dest_idents, allocator);
+
+    const dest_args_range = try dest_store.appendVars(dest_args.items);
+    return Func{
+        .args = dest_args_range,
+        .ret = dest_ret,
+        .needs_instantiation = func.needs_instantiation,
+    };
+}
+
+fn copyRecordFields(
+    source_store: *const TypesStore,
+    dest_store: *TypesStore,
+    fields_range: types_mod.RecordField.SafeMultiList.Range,
+    var_mapping: *VarMapping,
+    source_idents: *const base.Ident.Store,
+    dest_idents: *base.Ident.Store,
+    allocator: std.mem.Allocator,
+) std.mem.Allocator.Error!types_mod.RecordField.SafeMultiList.Range {
+    const source_fields = source_store.getRecordFieldsSlice(fields_range);
+
+    var fresh_fields = std.ArrayList(RecordField).empty;
+    defer fresh_fields.deinit(allocator);
+
+    for (source_fields.items(.name), source_fields.items(.var_)) |name, var_| {
+        const translated_name = try copyImportedIdent(source_idents, dest_idents, name, allocator);
+        try fresh_fields.append(allocator, .{
+            .name = translated_name,
+            .var_ = try copyVar(source_store, dest_store, var_, var_mapping, source_idents, dest_idents, allocator),
+        });
+    }
+
+    return try dest_store.appendRecordFields(fresh_fields.items);
+}
+
+fn copyRecord(
+    source_store: *const TypesStore,
+    dest_store: *TypesStore,
+    record: Record,
+    var_mapping: *VarMapping,
+    source_idents: *const base.Ident.Store,
+    dest_idents: *base.Ident.Store,
+    allocator: std.mem.Allocator,
+) std.mem.Allocator.Error!Record {
+    const fields_range = try copyRecordFields(
+        source_store,
+        dest_store,
+        record.fields,
+        var_mapping,
+        source_idents,
+        dest_idents,
+        allocator,
+    );
+
+    return Record{
+        .fields = fields_range,
+        .ext = try copyVar(source_store, dest_store, record.ext, var_mapping, source_idents, dest_idents, allocator),
+    };
+}
+
+fn copyTagUnion(
+    source_store: *const TypesStore,
+    dest_store: *TypesStore,
+    tag_union: TagUnion,
+    var_mapping: *VarMapping,
+    source_idents: *const base.Ident.Store,
+    dest_idents: *base.Ident.Store,
+    allocator: std.mem.Allocator,
+) std.mem.Allocator.Error!TagUnion {
+    const tags_slice = source_store.getTagsSlice(tag_union.tags);
+
+    var fresh_tags = std.ArrayList(Tag).empty;
+    defer fresh_tags.deinit(allocator);
+
+    for (tags_slice.items(.name), tags_slice.items(.args)) |name, args_range| {
+        const args_slice = source_store.sliceVars(args_range);
+
+        var dest_args = std.ArrayList(Var).empty;
+        defer dest_args.deinit(dest_store.gpa);
+
+        for (args_slice) |arg_var| {
+            const dest_arg = try copyVar(source_store, dest_store, arg_var, var_mapping, source_idents, dest_idents, allocator);
+            try dest_args.append(dest_store.gpa, dest_arg);
+        }
+
+        const dest_args_range = try dest_store.appendVars(dest_args.items);
+        const translated_name = try copyImportedIdent(source_idents, dest_idents, name, allocator);
+
+        try fresh_tags.append(allocator, .{
+            .name = translated_name,
+            .args = dest_args_range,
+        });
+    }
+
+    const tags_range = try dest_store.appendTags(fresh_tags.items);
+    return TagUnion{
+        .tags = tags_range,
+        .ext = try copyVar(source_store, dest_store, tag_union.ext, var_mapping, source_idents, dest_idents, allocator),
+    };
+}
+
+fn copyNominalType(
+    source_store: *const TypesStore,
+    dest_store: *TypesStore,
+    source_nominal: NominalType,
+    var_mapping: *VarMapping,
+    source_idents: *const base.Ident.Store,
+    dest_idents: *base.Ident.Store,
+    allocator: std.mem.Allocator,
+) std.mem.Allocator.Error!NominalType {
+    const translated_ident = try copyImportedIdent(source_idents, dest_idents, source_nominal.ident.ident_idx, allocator);
+    const translated_origin = try copyImportedIdent(source_idents, dest_idents, source_nominal.origin_module, allocator);
+
+    var dest_args = std.ArrayList(Var).empty;
+    defer dest_args.deinit(dest_store.gpa);
+
+    const origin_backing = source_store.getNominalBackingVar(source_nominal);
+    const dest_backing = try copyVar(source_store, dest_store, origin_backing, var_mapping, source_idents, dest_idents, allocator);
+    try dest_args.append(dest_store.gpa, dest_backing);
+
+    const origin_args = source_store.sliceNominalArgs(source_nominal);
+    for (origin_args) |arg_var| {
+        const dest_arg = try copyVar(source_store, dest_store, arg_var, var_mapping, source_idents, dest_idents, allocator);
+        try dest_args.append(dest_store.gpa, dest_arg);
+    }
+
+    const dest_vars_span = try dest_store.appendVars(dest_args.items);
+
+    return NominalType{
+        .ident = types_mod.TypeIdent{ .ident_idx = translated_ident },
+        .vars = .{ .nonempty = dest_vars_span },
+        .origin_module = translated_origin,
+        .source = source_nominal.source,
+    };
+}
+
+fn copyStaticDispatchConstraints(
+    source_store: *const TypesStore,
+    dest_store: *TypesStore,
+    source_constraints: StaticDispatchConstraint.SafeList.Range,
+    var_mapping: *VarMapping,
+    source_idents: *const base.Ident.Store,
+    dest_idents: *base.Ident.Store,
+    allocator: std.mem.Allocator,
+) std.mem.Allocator.Error!StaticDispatchConstraint.SafeList.Range {
+    const source_constraints_len = source_constraints.len();
+    if (source_constraints_len == 0) {
+        return StaticDispatchConstraint.SafeList.Range.empty();
+    }
+
+    var dest_constraints = try std.array_list.Managed(StaticDispatchConstraint).initCapacity(dest_store.gpa, source_constraints_len);
+    defer dest_constraints.deinit();
+
+    for (source_store.sliceStaticDispatchConstraints(source_constraints)) |source_constraint| {
+        const translated_fn_name = try copyImportedIdent(source_idents, dest_idents, source_constraint.fn_name, allocator);
+
+        var dest_constraint = source_constraint;
+        dest_constraint.fn_name = translated_fn_name;
+        dest_constraint.fn_var = try copyVar(source_store, dest_store, source_constraint.fn_var, var_mapping, source_idents, dest_idents, allocator);
+
+        try dest_constraints.append(dest_constraint);
+    }
+
+    return try dest_store.appendStaticDispatchConstraints(dest_constraints.items);
+}

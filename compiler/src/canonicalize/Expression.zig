@@ -1,0 +1,1766 @@
+//! Expression constructs used in Roc's canonicalization phase.
+//!
+//! This module defines the `Expr` union which represents all possible expressions
+//! in Roc's Canonical Intermediate Representation (CIR). These expressions are
+//! created during the canonicalization phase and represent the semantic meaning
+//! of parsed code after semantic analysis.
+//!
+//! Expression types include:
+//! - Literals: numbers, strings, lists, records, tuples
+//! - Operations: function calls, binary operations, field access
+//! - Control flow: if expressions, match expressions, blocks
+//! - Variables: local lookups, external lookups (defined in another motdule)
+//! - Advanced: lambdas, tags, error handling
+//!
+//! Examples of expressions:
+//! - `42` - integer literal
+//! - `"hello"` - string literal
+//! - `[1, 2, 3]` - list literal
+//! - `{ name: "Alice", age: 30 }` - record literal
+//! - `add(5, 3)` - function call
+//! - `if x > 0 "positive" else "non-positive"` - conditional
+
+const std = @import("std");
+const base = @import("base");
+const types = @import("types");
+const builtins = @import("builtins");
+
+const ModuleEnv = @import("ModuleEnv.zig");
+const CIR = @import("CIR.zig");
+
+const StringLiteral = base.StringLiteral;
+const Region = base.Region;
+const DataSpan = base.DataSpan;
+const CalledVia = base.CalledVia;
+const Ident = base.Ident;
+const SExprTree = base.SExprTree;
+const RocDec = builtins.dec.RocDec;
+const TypeVar = types.Var;
+
+const Self = Expr;
+
+/// An expression in the Roc language.
+pub const Expr = union(enum) {
+    /// An number literal with a specific value.
+    /// Represents whole numbers in various bases (decimal, hex, octal, binary).
+    ///
+    /// ```roc
+    /// 42          # Decimal number
+    /// 0xFF        # Hexadecimal integer
+    /// 0o755       # Octal integer
+    /// 0b1010      # Binary integer
+    /// 42u8        # Decimal number with type suffix
+    /// 42f32        # Decimal number with type suffix
+    /// ```
+    e_num: struct {
+        value: CIR.IntValue,
+        kind: CIR.NumKind,
+    },
+    /// A 32-bit floating-point literal.
+    e_frac_f32: struct {
+        value: f32,
+        has_suffix: bool, // If the value had a `f32` suffix
+    },
+    /// A 64-bit floating-point literal.
+    /// Used for approximate decimal representations when F64 type is explicitly required for increased performance.
+    ///
+    /// ```roc
+    /// 3.14f64     # Explicit F64 literal
+    /// 2.5e10f64   # Scientific notation F64
+    /// ```
+    e_frac_f64: struct {
+        value: f64,
+        has_suffix: bool, // If the value had a `f64` suffix
+    },
+    /// A high-precision decimal literal.
+    /// Used for exact decimal arithmetic without floating-point precision issues.
+    /// Roc's preferred numeric type for most decimal calculations.
+    ///
+    /// ```roc
+    /// 3.14159265358979323846    # High precision decimal
+    /// 0.1 + 0.2                 # Equals exactly 0.3 (not 0.30000000000000004)
+    /// ```
+    e_dec: struct {
+        value: RocDec,
+        has_suffix: bool, // If the value had a `dec` suffix
+    },
+    /// A small decimal literal stored as a rational number (numerator/10^denominator).
+    /// Memory-efficient representation for common decimal values.
+    /// Avoids floating-point precision issues by using exact rational arithmetic.
+    ///
+    /// ```roc
+    /// 3.14    # Stored as numerator=314, denominator_power_of_ten=2 (314/100)
+    /// 0.5     # Stored as numerator=5, denominator_power_of_ten=1 (5/10)
+    /// 42.0    # Stored as numerator=42, denominator_power_of_ten=0
+    /// ```
+    e_dec_small: struct {
+        value: CIR.SmallDecValue,
+        has_suffix: bool, // If the value had a `dec` suffix
+    },
+    /// A numeric literal whose exact value is stored in ModuleEnv's numeral
+    /// table because it does not fit the compact builtin literal payloads.
+    e_num_from_numeral: struct {},
+    /// An integer literal with explicit type annotation: `123.U64`
+    /// The type_name stores the type identifier (e.g., "U64", "I32")
+    /// Type checking constrains it through `from_numeral`; lowering uses the solved expr type.
+    e_typed_int: struct {
+        value: CIR.IntValue,
+        type_name: Ident.Idx,
+    },
+    /// A fractional literal with explicit type annotation: `3.14.Dec`
+    /// The type_name stores the type identifier (e.g., "Dec", "F64")
+    /// Type checking constrains it through `from_numeral`; lowering uses the solved expr type.
+    /// The value is stored as scaled i128 (like Dec, scaled by 10^18).
+    e_typed_frac: struct {
+        value: CIR.IntValue,
+        type_name: Ident.Idx,
+    },
+    /// A typed numeric literal whose exact value is stored in ModuleEnv's numeral
+    /// table because it does not fit the compact builtin literal payloads.
+    e_typed_num_from_numeral: struct {
+        type_name: Ident.Idx,
+    },
+    // A single segment of a string literal
+    // a single string may be made up of a span sequential segments
+    // for example if it was split across multiple lines
+    e_str_segment: struct {
+        literal: StringLiteral.Idx,
+    },
+    // A string is combined of one or more segments, some of which may be interpolated
+    // An interpolated string contains one or more non-string_segment's in the span
+    e_str: struct {
+        span: Expr.Span,
+    },
+    /// A bytes literal (List(U8)) from a file import
+    e_bytes_literal: struct {
+        literal: StringLiteral.Idx,
+    },
+    /// Lookup defined in this module
+    /// ```roc
+    /// foo = 42
+    /// bar = foo + 1 # the "foo" here references the local "foo"
+    /// ```
+    e_lookup_local: struct {
+        pattern_idx: CIR.Pattern.Idx,
+    },
+    /// Lookup defined in another module
+    /// ```roc
+    /// import json.Utf8
+    /// foo = Utf8.encode("hello") # "Utf8.encode" is defined in another module
+    /// ```
+    e_lookup_external: struct {
+        module_idx: CIR.Import.Idx,
+        target_node_idx: u32,
+        ident_idx: Ident.Idx,
+        region: Region,
+    },
+    /// Lookup of a required identifier from the platform's `requires` clause.
+    /// This represents a value that the app provides to the platform.
+    /// ```roc
+    /// platform "..."
+    ///     requires { main! : () => {} }
+    /// ...
+    /// main_for_host! = main!  # "main!" here is a required lookup
+    /// ```
+    e_lookup_required: struct {
+        /// Index into env.requires_types for this required identifier
+        requires_idx: ModuleEnv.RequiredType.SafeList.Idx,
+    },
+    /// A sequence of zero or more elements of the same type
+    /// ```roc
+    /// ["one", "two", "three"]
+    /// ```
+    e_list: struct {
+        elems: Expr.Span,
+    },
+    /// Empty list constant `[]`
+    e_empty_list: struct {},
+    /// Tuple expression zero or more elements of arbitrary type
+    /// ```roc
+    /// (1, "two", True)
+    /// ```
+    e_tuple: struct {
+        elems: Expr.Span,
+    },
+    /// Match expression with one or more branches
+    /// ```roc
+    /// match x {
+    ///     1 => "one",
+    ///     a if a > 1 => "positive",
+    ///     _ => "non-positive",
+    /// }
+    /// ```
+    e_match: Match,
+    /// If expression with one or more conditional branches and a final else clause.
+    /// Roc's if expressions are expressions, not statements, so they always return a value.
+    /// All branches must return the same type.
+    ///
+    /// ```roc
+    /// if x >= 0 "positive" else "negative"
+    /// ```
+    e_if: struct {
+        branches: IfBranch.Span,
+        final_else: Expr.Idx,
+        warn_unused_branches: bool,
+    },
+    /// This is *only* for calling functions, not for tag application.
+    /// The Tag variant contains any applied values inside it.
+    e_call: struct {
+        func: Expr.Idx,
+        args: Expr.Span,
+        called_via: CalledVia,
+        constraint_fn_var: ?TypeVar = null,
+    },
+    /// Record literal with zero or more fields.
+    /// Records are Roc's primary data structure for grouping related values.
+    /// Field order doesn't matter for type compatibility.
+    ///
+    /// ```roc
+    /// { name: "Alice", age: 30 }
+    /// { x: 1.0, y: 2.0, z: 3.0 }
+    /// { ..config, debug: True }  # Record update syntax
+    /// ```
+    e_record: struct {
+        fields: CIR.RecordField.Span,
+        ext: ?Expr.Idx,
+    },
+    /// Empty record constant
+    e_empty_record: struct {},
+    /// Block expression containing statements followed by a final expression.
+    /// Blocks create a new scope and execute statements sequentially.
+    /// The final expression determines the block's value and type.
+    ///
+    /// ```roc
+    /// {
+    ///     x = 42
+    ///     y = x + 1
+    ///     y * 2      # This expression is the block's value
+    /// }
+    /// ```
+    e_block: struct {
+        /// Statements executed in sequence
+        stmts: CIR.Statement.Span,
+        /// Final expression that produces the block's value
+        final_expr: Expr.Idx,
+    },
+    /// Tag constructor with arguments (payload).
+    /// Tags are used to create values of tag union types.
+    /// Can have zero or more arguments of any type.
+    ///
+    /// ```roc
+    /// Ok("success")          # Tag with string argument
+    /// Circle(3.14)           # Tag with numeric argument
+    /// Point(1.0, 2.0)        # Tag with multiple arguments
+    /// Some([1, 2, 3])        # Tag with list argument
+    /// ```
+    e_tag: struct {
+        name: Ident.Idx,
+        args: Expr.Span,
+    },
+    /// A qualified, nominal type
+    ///
+    /// ```roc
+    /// Try.Ok("success")       # Tags
+    /// Config.{ optimize : Bool}  # Records
+    /// Point.(1.0, 2.0)           # Tuples
+    /// Point.(1.0)                # Values
+    /// ```
+    e_nominal: struct {
+        nominal_type_decl: CIR.Statement.Idx,
+        backing_expr: Expr.Idx,
+        backing_type: NominalBackingType,
+    },
+    /// An external qualified, nominal type
+    ///
+    /// ```roc
+    /// OtherModule.Try.Ok("success")       # Tags
+    /// OtherModule.Config.{ optimize : Bool}  # Records
+    /// OtherModule.Point.(1.0, 2.0)           # Tuples
+    /// OtherModule.Point.(1.0)                # Values
+    /// ```
+    e_nominal_external: struct {
+        module_idx: CIR.Import.Idx,
+        target_node_idx: u32,
+        backing_expr: Expr.Idx,
+        backing_type: NominalBackingType,
+    },
+    /// Tag constructor with no arguments.
+    /// Represents constant values in tag union types.
+    /// Optimized representation for tags that carry no data.
+    ///
+    /// ```roc
+    /// None
+    /// Loading
+    /// Red
+    /// Empty
+    /// ```
+    e_zero_argument_tag: struct {
+        closure_name: Ident.Idx,
+        variant_var: TypeVar,
+        ext_var: TypeVar,
+        name: Ident.Idx,
+    },
+    /// A closure, which is a lambda expression that captures variables
+    /// from its environment.
+    e_closure: Closure,
+
+    /// A pure lambda expression, with no captures. This represents the
+    /// function's code before it's closed over.
+    e_lambda: Lambda,
+    /// Binary operation between two expressions.
+    /// Includes arithmetic, comparison, logical, and pipe operators.
+    ///
+    /// ```roc
+    /// 1 + 2              # Arithmetic: add
+    /// x > y              # Comparison: greater than
+    /// a and (b or c)     # Logical: and
+    /// ```
+    e_binop: Binop,
+    /// Unary minus expression that negates a numeric value.
+    ///
+    /// ```roc
+    /// -x              # Unary minus (numeric negation)
+    /// -42             # Unary minus on literal
+    /// ```
+    e_unary_minus: UnaryMinus,
+    /// Unary not expression that negates a boolean value.
+    ///
+    /// ```roc
+    /// !x              # Unary not (boolean negation)
+    /// !True           # Unary not on literal
+    /// ```
+    e_unary_not: UnaryNot,
+    /// Field access expression.
+    ///
+    /// ```roc
+    /// person.name
+    /// ```
+    e_field_access: struct {
+        receiver: Expr.Idx,
+        field_name: Ident.Idx,
+        field_name_region: base.Region,
+    },
+    /// Method call expression.
+    ///
+    /// ```roc
+    /// list.map(transform)
+    /// ```
+    e_method_call: struct {
+        receiver: Expr.Idx,
+        method_name: Ident.Idx,
+        method_name_region: base.Region,
+        args: Expr.Span,
+    },
+    e_dispatch_call: struct {
+        receiver: Expr.Idx,
+        method_name: Ident.Idx,
+        method_name_region: base.Region,
+        args: Expr.Span,
+        constraint_fn_var: TypeVar,
+        surface_origin: SurfaceOrigin,
+    },
+    /// Compiler-created interpolation dispatch.
+    ///
+    /// Unlike an ordinary method call, this dispatch is owned by the result
+    /// type of the whole interpolation expression. Runtime arguments are the
+    /// first `Str` segment and a compiler-generated `Iter` over interpolated
+    /// values paired with following `Str` segments.
+    e_interpolation: struct {
+        first: Expr.Idx,
+        /// Flat `(interpolated, following_segment)` pairs. The span length is
+        /// always even, with `following_segment` expressions already typed as
+        /// builtin `Str` segments.
+        parts: Expr.Span,
+        method_name_region: base.Region,
+        constraint_fn_var: ?TypeVar = null,
+        step_fn_var: ?TypeVar = null,
+    },
+    /// Structural equality chosen explicitly by the checker.
+    ///
+    /// This is not method dispatch. It represents the semantic case where
+    /// equality is satisfied structurally rather than via a user-defined
+    /// `is_eq` method.
+    e_structural_eq: struct {
+        lhs: Expr.Idx,
+        rhs: Expr.Idx,
+        negated: bool,
+    },
+    /// Structural hashing chosen explicitly by the checker.
+    ///
+    /// This is not method dispatch. It represents the semantic case where
+    /// `to_hash` is satisfied structurally — threading a `Hasher` through each
+    /// component's hash — rather than via a user-defined `to_hash` method.
+    e_structural_hash: struct {
+        value: Expr.Idx,
+        hasher: Expr.Idx,
+    },
+    e_method_eq: struct {
+        lhs: Expr.Idx,
+        rhs: Expr.Idx,
+        negated: bool,
+        constraint_fn_var: types.Var,
+    },
+    /// Method call expression rooted in a type-dispatch owner.
+    ///
+    /// ```roc
+    /// Fmt : fmt
+    /// Fmt.decode_str(format, source)
+    ///
+    /// Shape : { foo : Str }
+    /// Shape.parser_for(format)
+    /// ```
+    e_type_method_call: struct {
+        type_dispatch_stmt: CIR.Statement.Idx,
+        method_name: Ident.Idx,
+        method_name_region: base.Region,
+        args: Expr.Span,
+    },
+    e_type_dispatch_call: struct {
+        type_dispatch_stmt: CIR.Statement.Idx,
+        method_name: Ident.Idx,
+        method_name_region: base.Region,
+        args: Expr.Span,
+        constraint_fn_var: TypeVar,
+    },
+    /// Tuple element access by numeric index.
+    /// Accesses an element of a tuple using dot notation with a numeric index.
+    ///
+    /// ```roc
+    /// point.0       # Access first element
+    /// coords.1      # Access second element
+    /// (1, 2, 3).2   # Access third element of inline tuple
+    /// ```
+    e_tuple_access: struct {
+        tuple: Expr.Idx, // The tuple expression being accessed
+        elem_index: u32, // The 0-based index of the element to access
+    },
+    /// Runtime error expression that crashes when executed.
+    /// These are inserted during canonicalization when the compiler encounters
+    /// semantic errors but continues compilation following the "inform don't block" philosophy.
+    /// Common causes include names not in scope, type mismatches, and invalid operations.
+    ///
+    /// ```roc
+    /// # This generates e_runtime_error for name 'x' not being in scope
+    /// y = x + 1
+    ///
+    /// # This generates e_runtime_error for type mismatch
+    /// nums = [1, 2, "hello"]  # mixing numbers and strings
+    /// ```
+    e_runtime_error: struct {
+        diagnostic: CIR.Diagnostic.Idx,
+    },
+    /// A crash expression that terminates execution with a message.
+    /// This expression never returns and causes the program to crash at runtime.
+    ///
+    /// ```roc
+    /// crash "Something went wrong"
+    /// ```
+    e_crash: struct {
+        msg: StringLiteral.Idx,
+    },
+    /// A debug expression that prints the value of the inner expression.
+    /// This expression evaluates to the same value as the inner expression
+    /// but has the side effect of printing the value for debugging purposes.
+    ///
+    /// ```roc
+    /// dbg someValue
+    /// ```
+    e_dbg: struct {
+        expr: Expr.Idx,
+    },
+    /// The Err arm of a `?` operator used directly inside a top-level `expect`.
+    /// Consumes the Err payload and fails the enclosing `expect` at runtime,
+    /// reporting the payload value. This expression never returns.
+    ///
+    /// ```roc
+    /// expect Str.to_u64("abc")? == 5
+    /// ```
+    e_expect_err: struct {
+        expr: Expr.Idx,
+        /// Source text of the `?` expression, for the failure message.
+        snippet: StringLiteral.Idx,
+    },
+    /// An expect expression that performs a runtime assertion.
+    /// This expression evaluates to empty record {} but can fail at runtime.
+    /// Used for both top-level tests and inline assertions.
+    ///
+    /// ```roc
+    /// expect [1,2,3].len() == 3
+    /// ```
+    e_expect: struct {
+        body: Expr.Idx,
+    },
+    /// Ellipsis placeholder expression (...).
+    /// This is valid syntax that represents an unimplemented expression.
+    /// It will crash at runtime if execution reaches this point.
+    ///
+    /// ```roc
+    /// launchTheNukes: |{}| ...
+    /// ```
+    e_ellipsis: struct {},
+    /// A standalone type annotation without a body.
+    /// This represents a type declaration that has no implementation.
+    /// During type-checking, this expression is assigned the type from its annotation.
+    ///
+    /// ```roc
+    /// foo : {} -> {}
+    /// ```
+    e_anno_only: struct {
+        /// The identifier being defined (extracted from the pattern to avoid cross-module node index issues)
+        ident: Ident.Idx,
+    },
+
+    /// Early return expression that exits the enclosing function with a value.
+    /// This is used when `return` appears as the final expression in a block.
+    /// Unlike a normal expression, evaluating this causes the function to return
+    /// immediately with the contained value.
+    ///
+    /// ```roc
+    /// if condition {
+    ///     return value  # Early return from enclosing function
+    /// }
+    /// ```
+    e_return: struct {
+        expr: Expr.Idx,
+        /// The lambda this return belongs to (for type unification).
+        lambda: Expr.Idx,
+        /// Context indicating where this return came from.
+        context: ReturnContext,
+
+        pub const ReturnContext = enum(u8) {
+            /// Explicit `return` expression
+            return_expr,
+            /// `?` suffix operator (try operator) desugaring
+            try_suffix,
+        };
+    },
+
+    /// Break expression that exits the enclosing loop.
+    e_break: struct {},
+
+    /// For expression that iterates over a list and executes a body for each element.
+    /// The for expression evaluates to the empty record `{}`.
+    /// This is the expression form of a for loop, allowing it to be used in expression contexts.
+    ///
+    /// ```roc
+    /// for_each! = |items, cb!| for item in items { cb!(item) }
+    /// ```
+    e_for: struct {
+        patt: CIR.Pattern.Idx,
+        expr: Expr.Idx,
+        body: Expr.Idx,
+    },
+
+    /// A hosted function that will be provided by the platform at runtime.
+    /// This represents a lambda/function whose implementation is provided by the host application
+    /// via the RocOps.hosted_fns array.
+    ///
+    /// ```roc
+    /// # Stdout.line! is a hosted function provided by the platform
+    /// line! : Str => {}
+    /// ```
+    e_hosted_lambda: struct {
+        symbol_name: base.Ident.Idx,
+        args: CIR.Pattern.Span,
+    },
+
+    /// A low-level builtin operation.
+    /// This represents a lambda/function that will be implemented by the compiler backend.
+    /// Like e_anno_only, it has no Roc implementation, but unlike e_anno_only,
+    /// it's expected to be implemented by the backend rather than being an error.
+    /// It behaves like e_lambda in that it has parameters and a body (which crashes when evaluated).
+    ///
+    /// Run a low-level builtin operation with the given argument expressions.
+    /// This is a leaf expression that appears as the body of a normal e_lambda.
+    /// The args are e_lookup_local expressions referencing the enclosing lambda's params.
+    e_run_low_level: struct {
+        op: LowLevel,
+        args: Expr.Span,
+    },
+
+    pub const LowLevel = base.LowLevel;
+
+    pub const Idx = enum(u32) { _ };
+    pub const Span = extern struct { span: DataSpan };
+
+    /// A single branch of an if expression.
+    /// Contains a condition expression and the body to execute if the condition is true.
+    ///
+    /// ```roc
+    /// if x >= 0 {         # condition: x >= 0
+    ///     "positive"      # body: "positive"
+    /// } else if x < 0 {   # condition: x < 0
+    ///     "negative"      # body: "negative"
+    /// }
+    /// ```
+    pub const IfBranch = struct {
+        cond: Expr.Idx,
+        body: Expr.Idx,
+
+        pub const Idx = enum(u32) { _ };
+        pub const Span = extern struct { span: base.DataSpan };
+    };
+
+    /// A closure, which is a lambda expression that captures variables
+    /// from its environment.
+    pub const Closure = struct {
+        lambda_idx: Expr.Idx, // An index pointing to an `e_lambda` expression
+        captures: Expr.Capture.Span,
+        /// The unique tag name for this closure (e.g., "#1_addX").
+        /// Used for lambda set tracking in the type system.
+        tag_name: Ident.Idx,
+    };
+
+    /// A pure lambda expression, with no captures. This represents the
+    /// function's code before it's closed over.
+    pub const Lambda = struct {
+        args: CIR.Pattern.Span,
+        body: Expr.Idx,
+    };
+
+    pub fn initStr(expr_span: Expr.Span) Expr {
+        return Self{
+            .e_str = .{
+                .span = expr_span,
+            },
+        };
+    }
+
+    pub fn initStrSegment(literal: StringLiteral.Idx) Expr {
+        return Self{
+            .e_str_segment = .{
+                .literal = literal,
+            },
+        };
+    }
+
+    /// A binary operation between two expressions.
+    /// Represents infix operators that take two operands.
+    ///
+    /// ```roc
+    /// 1 + 2       # add
+    /// x > y       # gt (greater than)
+    /// a and b     # and (logical AND)
+    /// xs |> f     # pipe operator (not valid syntax, used to provide nice error messages)
+    /// ```
+    pub const Binop = struct {
+        op: Op,
+        lhs: Expr.Idx,
+        rhs: Expr.Idx,
+
+        /// Binary operators available in Roc.
+        pub const Op = enum {
+            add, // +
+            sub, // -
+            mul, // *
+            div, // /
+            rem, // %
+            lt, // <
+            gt, // >
+            le, // <=
+            ge, // >=
+            eq, // ==
+            ne, // !=
+            div_trunc, // //
+            @"and", // and
+            @"or", // or
+        };
+
+        pub fn init(op: Op, lhs: Expr.Idx, rhs: Expr.Idx) Binop {
+            return Binop{ .op = op, .lhs = lhs, .rhs = rhs };
+        }
+    };
+
+    /// The surface syntax a dispatch call was desugared from, recorded as
+    /// explicit CIR data so re-emission can reproduce the operator form.
+    /// Operator forms carry contracts the method-call form does not (e.g.
+    /// arithmetic binops: `ret = lhs`), so re-emitting them as `.method()`
+    /// calls would weaken the program.
+    pub const SurfaceOrigin = union(enum) {
+        /// Written as a method call (`a.plus(b)`) in the source.
+        method_call,
+        /// Desugared from a binary operator expression (`a + b`).
+        binop: Binop.Op,
+        /// Desugared from unary negation (`-a`).
+        unary_minus,
+        /// Desugared from unary logical not (`!a`).
+        unary_not,
+    };
+
+    /// Unary minus operation for numeric negation.
+    pub const UnaryMinus = struct {
+        expr: Expr.Idx,
+
+        pub fn init(expr: Expr.Idx) UnaryMinus {
+            return UnaryMinus{ .expr = expr };
+        }
+    };
+
+    /// Unary not operation for boolean negation.
+    pub const UnaryNot = struct {
+        expr: Expr.Idx,
+
+        pub fn init(expr: Expr.Idx) UnaryNot {
+            return UnaryNot{ .expr = expr };
+        }
+    };
+
+    /// The type inside a nominal var
+    pub const NominalBackingType = enum { tag, record, tuple, value };
+
+    pub fn pushToSExprTree(self: *const @This(), ir: *const ModuleEnv, tree: *SExprTree, expr_idx: Self.Idx) std.mem.Allocator.Error!void {
+        switch (self.*) {
+            .e_num => |int_expr| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-num");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+
+                try int_expr.value.pushStringPair(tree, "value");
+
+                const attrs = tree.beginNode();
+                try tree.endNode(begin, attrs);
+            },
+            .e_frac_f32 => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-frac-f32");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+
+                const value_begin = try tree.reserveStringBuffer(400);
+                errdefer tree.discardReservedStringBuffer(value_begin);
+                const value_str = builtins.compiler_rt_128.f32_to_str(tree.reservedStringBuffer(value_begin)[0..400], e.value);
+                try tree.pushReservedStringPair("value", value_begin, value_str);
+
+                const attrs = tree.beginNode();
+                try tree.endNode(begin, attrs);
+            },
+            .e_frac_f64 => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-frac-f64");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+
+                const value_begin = try tree.reserveStringBuffer(400);
+                errdefer tree.discardReservedStringBuffer(value_begin);
+                const value_str = builtins.compiler_rt_128.f64_to_str(tree.reservedStringBuffer(value_begin)[0..400], e.value);
+                try tree.pushReservedStringPair("value", value_begin, value_str);
+
+                const attrs = tree.beginNode();
+                try tree.endNode(begin, attrs);
+            },
+            .e_dec => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-frac-dec");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+
+                const dec_value_f64: f64 = builtins.compiler_rt_128.i128_to_f64(e.value.num) / std.math.pow(f64, 10, 18);
+                const value_begin = try tree.reserveStringBuffer(400);
+                errdefer tree.discardReservedStringBuffer(value_begin);
+                const value_str = builtins.compiler_rt_128.f64_to_str(tree.reservedStringBuffer(value_begin)[0..400], dec_value_f64);
+                try tree.pushReservedStringPair("value", value_begin, value_str);
+
+                const attrs = tree.beginNode();
+                try tree.endNode(begin, attrs);
+            },
+            .e_dec_small => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-dec-small");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+
+                try tree.pushStringPairFmt("numerator", "{}", .{e.value.numerator});
+
+                try tree.pushStringPairFmt("denominator-power-of-ten", "{}", .{e.value.denominator_power_of_ten});
+
+                const numerator_f64: f64 = @floatFromInt(e.value.numerator);
+                const denominator_f64: f64 = std.math.pow(f64, 10, @floatFromInt(e.value.denominator_power_of_ten));
+                const value_f64 = numerator_f64 / denominator_f64;
+
+                const value_begin = try tree.reserveStringBuffer(400);
+                errdefer tree.discardReservedStringBuffer(value_begin);
+                const value_str = builtins.compiler_rt_128.f64_to_str(tree.reservedStringBuffer(value_begin)[0..400], value_f64);
+                try tree.pushReservedStringPair("value", value_begin, value_str);
+
+                const attrs = tree.beginNode();
+                try tree.endNode(begin, attrs);
+            },
+            .e_num_from_numeral => {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-num-from-numeral");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+
+                const attrs = tree.beginNode();
+                try tree.endNode(begin, attrs);
+            },
+            .e_typed_int => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-typed-int");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+
+                try e.value.pushStringPair(tree, "value");
+
+                const type_name = ir.getIdent(e.type_name);
+                try tree.pushStringPair("type", type_name);
+
+                const attrs = tree.beginNode();
+                try tree.endNode(begin, attrs);
+            },
+            .e_typed_num_from_numeral => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-typed-num-from-numeral");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+
+                const type_name = ir.getIdent(e.type_name);
+                try tree.pushStringPair("type", type_name);
+
+                const attrs = tree.beginNode();
+                try tree.endNode(begin, attrs);
+            },
+            .e_typed_frac => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-typed-frac");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+
+                try e.value.pushStringPair(tree, "value");
+
+                const type_name = ir.getIdent(e.type_name);
+                try tree.pushStringPair("type", type_name);
+
+                const attrs = tree.beginNode();
+                try tree.endNode(begin, attrs);
+            },
+            .e_str_segment => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-literal");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+
+                const value = ir.getString(e.literal);
+                try tree.pushStringPair("string", value);
+
+                const attrs = tree.beginNode();
+                try tree.endNode(begin, attrs);
+            },
+            .e_bytes_literal => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-bytes-literal");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+
+                const value = ir.getString(e.literal);
+                const len_str = try std.fmt.allocPrint(ir.gpa, "{d}", .{value.len});
+                defer ir.gpa.free(len_str);
+                try tree.pushStringPair("len", len_str);
+
+                const attrs = tree.beginNode();
+                try tree.endNode(begin, attrs);
+            },
+            .e_str => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-string");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                const attrs = tree.beginNode();
+
+                for (ir.store.sliceExpr(e.span)) |segment| {
+                    try ir.store.getExpr(segment).pushToSExprTree(ir, tree, segment);
+                }
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_list => |l| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-list");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                const attrs = tree.beginNode();
+
+                const elems_begin = tree.beginNode();
+                try tree.pushStaticAtom("elems");
+                const elems_attrs = tree.beginNode();
+                for (ir.store.sliceExpr(l.elems)) |elem_idx| {
+                    try ir.store.getExpr(elem_idx).pushToSExprTree(ir, tree, elem_idx);
+                }
+                try tree.endNode(elems_begin, elems_attrs);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_empty_list => {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-empty_list");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                const attrs = tree.beginNode();
+                try tree.endNode(begin, attrs);
+            },
+            .e_tuple => |t| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-tuple");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                const attrs = tree.beginNode();
+
+                const elems_begin = tree.beginNode();
+                try tree.pushStaticAtom("elems");
+                const elems_attrs = tree.beginNode();
+                for (ir.store.sliceExpr(t.elems)) |elem_idx| {
+                    try ir.store.getExpr(elem_idx).pushToSExprTree(ir, tree, elem_idx);
+                }
+                try tree.endNode(elems_begin, elems_attrs);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_lookup_local => |local| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-lookup-local");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                const attrs = tree.beginNode();
+
+                try ir.store.getPattern(local.pattern_idx).pushToSExprTree(ir, tree, local.pattern_idx);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_lookup_external => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-lookup-external");
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, e.region);
+                const attrs = tree.beginNode();
+
+                const module_idx_int = @intFromEnum(e.module_idx);
+                std.debug.assert(module_idx_int < ir.imports.imports.items.items.len);
+                const string_lit_idx = ir.imports.imports.items.items[module_idx_int];
+                const module_name = ir.common.strings.get(string_lit_idx);
+                // Special case: Builtin module is an implementation detail, print as (builtin)
+                if (std.mem.eql(u8, module_name, "Builtin") or CIR.Import.isCompilerBuiltinImportName(module_name)) {
+                    const field_begin = tree.beginNode();
+                    try tree.pushStaticAtom("builtin");
+                    const field_attrs = tree.beginNode();
+                    try tree.endNode(field_begin, field_attrs);
+                } else {
+                    try tree.pushStringPair("external-module", module_name);
+                }
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_lookup_required => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-lookup-required");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                const attrs = tree.beginNode();
+
+                const requires_items = ir.requires_types.items.items;
+                const idx = e.requires_idx.toU32();
+                if (idx < requires_items.len) {
+                    const required_type = requires_items[idx];
+                    const ident_name = ir.getIdent(required_type.ident);
+                    try tree.pushStringPair("required-ident", ident_name);
+                }
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_match => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-match");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                const attrs = tree.beginNode();
+
+                try e.pushToSExprTree(ir, tree, region);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_if => |if_expr| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-if");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                const attrs = tree.beginNode();
+
+                const branches_begin = tree.beginNode();
+                try tree.pushStaticAtom("if-branches");
+                const branches_attrs = tree.beginNode();
+                const branch_indices = ir.store.sliceIfBranches(if_expr.branches);
+                for (branch_indices) |branch_idx| {
+                    const branch = ir.store.getIfBranch(branch_idx);
+
+                    const branch_begin = tree.beginNode();
+                    try tree.pushStaticAtom("if-branch");
+                    const branch_attrs = tree.beginNode();
+
+                    try ir.store.getExpr(branch.cond).pushToSExprTree(ir, tree, branch.cond);
+                    try ir.store.getExpr(branch.body).pushToSExprTree(ir, tree, branch.body);
+
+                    try tree.endNode(branch_begin, branch_attrs);
+                }
+                try tree.endNode(branches_begin, branches_attrs);
+
+                const else_begin = tree.beginNode();
+                try tree.pushStaticAtom("if-else");
+                const else_attrs = tree.beginNode();
+                try ir.store.getExpr(if_expr.final_else).pushToSExprTree(ir, tree, if_expr.final_else);
+                try tree.endNode(else_begin, else_attrs);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_call => |c| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-call");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                if (c.constraint_fn_var) |constraint_fn_var| {
+                    try tree.pushU64Pair("constraint-fn-var", @intFromEnum(constraint_fn_var));
+                }
+                const attrs = tree.beginNode();
+
+                const all_exprs = ir.store.exprSlice(c.args);
+
+                try ir.store.getExpr(c.func).pushToSExprTree(ir, tree, c.func);
+
+                if (all_exprs.len > 0) {
+                    for (all_exprs[0..]) |arg_idx| {
+                        try ir.store.getExpr(arg_idx).pushToSExprTree(ir, tree, arg_idx);
+                    }
+                }
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_record => |record_expr| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-record");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                const attrs = tree.beginNode();
+
+                if (record_expr.ext) |ext_idx| {
+                    const ext_begin = tree.beginNode();
+                    try tree.pushStaticAtom("ext");
+                    const ext_attrs = tree.beginNode();
+                    try ir.store.getExpr(ext_idx).pushToSExprTree(ir, tree, ext_idx);
+                    try tree.endNode(ext_begin, ext_attrs);
+                }
+
+                const fields_begin = tree.beginNode();
+                try tree.pushStaticAtom("fields");
+                const fields_attrs = tree.beginNode();
+                for (ir.store.sliceRecordFields(record_expr.fields)) |field_idx| {
+                    try ir.store.getRecordField(field_idx).pushToSExprTree(ir, tree);
+                }
+                try tree.endNode(fields_begin, fields_attrs);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_empty_record => {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-empty_record");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                const attrs = tree.beginNode();
+                try tree.endNode(begin, attrs);
+            },
+
+            .e_block => |block_expr| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-block");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                const attrs = tree.beginNode();
+
+                for (ir.store.sliceStatements(block_expr.stmts)) |stmt_idx| {
+                    try ir.store.getStatement(stmt_idx).pushToSExprTree(ir, tree, stmt_idx);
+                }
+
+                try ir.store.getExpr(block_expr.final_expr).pushToSExprTree(ir, tree, block_expr.final_expr);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_tag => |tag_expr| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-tag");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                try tree.pushStringPair("name", ir.getIdent(tag_expr.name));
+                const attrs = tree.beginNode();
+
+                if (tag_expr.args.span.len > 0) {
+                    const args_begin = tree.beginNode();
+                    try tree.pushStaticAtom("args");
+                    const args_attrs = tree.beginNode();
+                    for (ir.store.sliceExpr(tag_expr.args)) |arg_idx| {
+                        try ir.store.getExpr(arg_idx).pushToSExprTree(ir, tree, arg_idx);
+                    }
+                    try tree.endNode(args_begin, args_attrs);
+                }
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_nominal => |nominal_expr| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-nominal");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+
+                const stmt = ir.store.getStatement(nominal_expr.nominal_type_decl);
+                switch (stmt) {
+                    .s_nominal_decl => |decl| {
+                        const header = ir.store.getTypeHeader(decl.header);
+                        try tree.pushStringPair("nominal", ir.getIdent(header.name));
+                    },
+                    else => {
+                        // Handle malformed nominal type declaration by pushing error info
+                        try tree.pushStringPair("nominal", "<malformed>");
+                    },
+                }
+
+                const attrs = tree.beginNode();
+
+                try ir.store.getExpr(nominal_expr.backing_expr).pushToSExprTree(ir, tree, nominal_expr.backing_expr);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_nominal_external => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-nominal-external");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                const attrs = tree.beginNode();
+
+                const module_idx_int = @intFromEnum(e.module_idx);
+                std.debug.assert(module_idx_int < ir.imports.imports.items.items.len);
+                const string_lit_idx = ir.imports.imports.items.items[module_idx_int];
+                const module_name = ir.common.strings.get(string_lit_idx);
+                // Special case: Builtin module is an implementation detail, print as (builtin)
+                if (std.mem.eql(u8, module_name, "Builtin") or CIR.Import.isCompilerBuiltinImportName(module_name)) {
+                    const field_begin = tree.beginNode();
+                    try tree.pushStaticAtom("builtin");
+                    const field_attrs = tree.beginNode();
+                    try tree.endNode(field_begin, field_attrs);
+                } else {
+                    try tree.pushStringPair("external-module", module_name);
+                }
+
+                try ir.store.getExpr(e.backing_expr).pushToSExprTree(ir, tree, e.backing_expr);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_zero_argument_tag => |zero_arg_tag_expr| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-zero-argument-tag");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                try tree.pushStringPair("closure", ir.getIdentText(zero_arg_tag_expr.closure_name));
+                try tree.pushStringPair("name", ir.getIdentText(zero_arg_tag_expr.name));
+                const attrs = tree.beginNode();
+                try tree.endNode(begin, attrs);
+            },
+            .e_closure => |closure_expr| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-closure");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                const attrs = tree.beginNode();
+
+                // Display capture information if present
+                if (closure_expr.captures.span.len > 0) {
+                    const captures_begin = tree.beginNode();
+                    try tree.pushStaticAtom("captures");
+                    const captures_attrs = tree.beginNode();
+                    for (ir.store.sliceCaptures(closure_expr.captures)) |captured_var_idx| {
+                        const captured_var = ir.store.getCapture(captured_var_idx);
+                        const capture_begin = tree.beginNode();
+                        try tree.pushStaticAtom("capture");
+
+                        const capture_region = ir.store.getPatternRegion(captured_var.pattern_idx);
+                        try ir.appendRegionInfoToSExprTreeFromRegion(tree, capture_region);
+
+                        try tree.pushStringPair("ident", ir.getIdentText(captured_var.name));
+                        const capture_attrs = tree.beginNode();
+                        try tree.endNode(capture_begin, capture_attrs);
+                    }
+                    try tree.endNode(captures_begin, captures_attrs);
+                }
+
+                try ir.store.getExpr(closure_expr.lambda_idx).pushToSExprTree(ir, tree, closure_expr.lambda_idx);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_lambda => |lambda_expr| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-lambda");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                const attrs = tree.beginNode();
+
+                const args_begin = tree.beginNode();
+                try tree.pushStaticAtom("args");
+                const args_attrs = tree.beginNode();
+                for (ir.store.slicePatterns(lambda_expr.args)) |arg_idx| {
+                    try ir.store.getPattern(arg_idx).pushToSExprTree(ir, tree, arg_idx);
+                }
+                try tree.endNode(args_begin, args_attrs);
+
+                try ir.store.getExpr(lambda_expr.body).pushToSExprTree(ir, tree, lambda_expr.body);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_binop => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-binop");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                try tree.pushStringPair("op", @tagName(e.op));
+                const attrs = tree.beginNode();
+
+                try ir.store.getExpr(e.lhs).pushToSExprTree(ir, tree, e.lhs);
+                try ir.store.getExpr(e.rhs).pushToSExprTree(ir, tree, e.rhs);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_unary_minus => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-unary-minus");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                const attrs = tree.beginNode();
+
+                try ir.store.getExpr(e.expr).pushToSExprTree(ir, tree, e.expr);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_unary_not => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-unary-not");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                const attrs = tree.beginNode();
+
+                try ir.store.getExpr(e.expr).pushToSExprTree(ir, tree, e.expr);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_field_access => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-field-access");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                try tree.pushStringPair("field", ir.getIdentText(e.field_name));
+                const attrs = tree.beginNode();
+
+                const receiver_begin = tree.beginNode();
+                try tree.pushStaticAtom("receiver");
+                const receiver_attrs = tree.beginNode();
+                try ir.store.getExpr(e.receiver).pushToSExprTree(ir, tree, e.receiver);
+                try tree.endNode(receiver_begin, receiver_attrs);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_method_call => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-method-call");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                try tree.pushStringPair("method", ir.getIdentText(e.method_name));
+                const attrs = tree.beginNode();
+
+                const receiver_begin = tree.beginNode();
+                try tree.pushStaticAtom("receiver");
+                const receiver_attrs = tree.beginNode();
+                try ir.store.getExpr(e.receiver).pushToSExprTree(ir, tree, e.receiver);
+                try tree.endNode(receiver_begin, receiver_attrs);
+
+                const args_begin = tree.beginNode();
+                try tree.pushStaticAtom("args");
+                const args_attrs = tree.beginNode();
+                for (ir.store.sliceExpr(e.args)) |arg_idx| {
+                    try ir.store.getExpr(arg_idx).pushToSExprTree(ir, tree, arg_idx);
+                }
+                try tree.endNode(args_begin, args_attrs);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_dispatch_call => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-dispatch-call");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                try tree.pushStringPair("method", ir.getIdentText(e.method_name));
+                try tree.pushU64Pair("constraint-fn-var", @intFromEnum(e.constraint_fn_var));
+                const attrs = tree.beginNode();
+
+                const receiver_begin = tree.beginNode();
+                try tree.pushStaticAtom("receiver");
+                const receiver_attrs = tree.beginNode();
+                try ir.store.getExpr(e.receiver).pushToSExprTree(ir, tree, e.receiver);
+                try tree.endNode(receiver_begin, receiver_attrs);
+
+                const args_begin = tree.beginNode();
+                try tree.pushStaticAtom("args");
+                const args_attrs = tree.beginNode();
+                for (ir.store.sliceExpr(e.args)) |arg_idx| {
+                    try ir.store.getExpr(arg_idx).pushToSExprTree(ir, tree, arg_idx);
+                }
+                try tree.endNode(args_begin, args_attrs);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_interpolation => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-interpolation");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                if (e.constraint_fn_var) |constraint_fn_var| {
+                    try tree.pushU64Pair("constraint-fn-var", @intFromEnum(constraint_fn_var));
+                }
+                const attrs = tree.beginNode();
+
+                {
+                    const first_begin = tree.beginNode();
+                    try tree.pushStaticAtom("first");
+                    const first_attrs = tree.beginNode();
+                    try ir.store.getExpr(e.first).pushToSExprTree(ir, tree, e.first);
+                    try tree.endNode(first_begin, first_attrs);
+                }
+
+                {
+                    const parts_begin = tree.beginNode();
+                    try tree.pushStaticAtom("parts");
+                    const parts_attrs = tree.beginNode();
+                    for (ir.store.sliceExpr(e.parts)) |part_idx| {
+                        try ir.store.getExpr(part_idx).pushToSExprTree(ir, tree, part_idx);
+                    }
+                    try tree.endNode(parts_begin, parts_attrs);
+                }
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_structural_eq => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-structural-eq");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                try tree.pushStringPair("negated", if (e.negated) "true" else "false");
+                const attrs = tree.beginNode();
+
+                const lhs_begin = tree.beginNode();
+                try tree.pushStaticAtom("lhs");
+                const lhs_attrs = tree.beginNode();
+                try ir.store.getExpr(e.lhs).pushToSExprTree(ir, tree, e.lhs);
+                try tree.endNode(lhs_begin, lhs_attrs);
+
+                const rhs_begin = tree.beginNode();
+                try tree.pushStaticAtom("rhs");
+                const rhs_attrs = tree.beginNode();
+                try ir.store.getExpr(e.rhs).pushToSExprTree(ir, tree, e.rhs);
+                try tree.endNode(rhs_begin, rhs_attrs);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_structural_hash => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-structural-hash");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                const attrs = tree.beginNode();
+
+                const value_begin = tree.beginNode();
+                try tree.pushStaticAtom("value");
+                const value_attrs = tree.beginNode();
+                try ir.store.getExpr(e.value).pushToSExprTree(ir, tree, e.value);
+                try tree.endNode(value_begin, value_attrs);
+
+                const hasher_begin = tree.beginNode();
+                try tree.pushStaticAtom("hasher");
+                const hasher_attrs = tree.beginNode();
+                try ir.store.getExpr(e.hasher).pushToSExprTree(ir, tree, e.hasher);
+                try tree.endNode(hasher_begin, hasher_attrs);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_method_eq => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-method-eq");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                try tree.pushStringPair("negated", if (e.negated) "true" else "false");
+                const attrs = tree.beginNode();
+
+                const lhs_begin = tree.beginNode();
+                try tree.pushStaticAtom("lhs");
+                const lhs_attrs = tree.beginNode();
+                try ir.store.getExpr(e.lhs).pushToSExprTree(ir, tree, e.lhs);
+                try tree.endNode(lhs_begin, lhs_attrs);
+
+                const rhs_begin = tree.beginNode();
+                try tree.pushStaticAtom("rhs");
+                const rhs_attrs = tree.beginNode();
+                try ir.store.getExpr(e.rhs).pushToSExprTree(ir, tree, e.rhs);
+                try tree.endNode(rhs_begin, rhs_attrs);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_type_method_call => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-type-method-call");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                try tree.pushStringPair("method", ir.getIdentText(e.method_name));
+                const attrs = tree.beginNode();
+
+                try tree.pushU64Pair("type-dispatch-stmt", @intFromEnum(e.type_dispatch_stmt));
+
+                const args_begin = tree.beginNode();
+                try tree.pushStaticAtom("args");
+                const args_attrs = tree.beginNode();
+                for (ir.store.sliceExpr(e.args)) |arg_idx| {
+                    try ir.store.getExpr(arg_idx).pushToSExprTree(ir, tree, arg_idx);
+                }
+                try tree.endNode(args_begin, args_attrs);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_type_dispatch_call => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-type-dispatch-call");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                try tree.pushStringPair("method", ir.getIdentText(e.method_name));
+                try tree.pushU64Pair("type-dispatch-stmt", @intFromEnum(e.type_dispatch_stmt));
+                try tree.pushU64Pair("constraint-fn-var", @intFromEnum(e.constraint_fn_var));
+                const attrs = tree.beginNode();
+
+                const args_begin = tree.beginNode();
+                try tree.pushStaticAtom("args");
+                const args_attrs = tree.beginNode();
+                for (ir.store.sliceExpr(e.args)) |arg_idx| {
+                    try ir.store.getExpr(arg_idx).pushToSExprTree(ir, tree, arg_idx);
+                }
+                try tree.endNode(args_begin, args_attrs);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_tuple_access => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-tuple-access");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+
+                // Push the index as an attribute
+                try tree.pushStringPairFmt("index", "{d}", .{e.elem_index});
+                const attrs = tree.beginNode();
+
+                // Push the tuple expression
+                try ir.store.getExpr(e.tuple).pushToSExprTree(ir, tree, e.tuple);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_runtime_error => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-runtime-error");
+
+                const diagnostic = ir.store.getDiagnostic(e.diagnostic);
+                const msg = try std.fmt.allocPrint(ir.gpa, "{s}", .{@tagName(diagnostic)});
+                defer ir.gpa.free(msg);
+
+                try tree.pushStringPair("tag", msg);
+
+                const attrs = tree.beginNode();
+                try tree.endNode(begin, attrs);
+            },
+            .e_ellipsis => {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-not-implemented");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                const attrs = tree.beginNode();
+                try tree.endNode(begin, attrs);
+            },
+            .e_anno_only => {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-anno-only");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                const attrs = tree.beginNode();
+                try tree.endNode(begin, attrs);
+            },
+            .e_hosted_lambda => |hosted| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-hosted-lambda");
+                const symbol_name = ir.common.getIdent(hosted.symbol_name);
+                try tree.pushStringPair("symbol", symbol_name);
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                const attrs = tree.beginNode();
+
+                const args_begin = tree.beginNode();
+                try tree.pushStaticAtom("args");
+                const args_attrs = tree.beginNode();
+                for (ir.store.slicePatterns(hosted.args)) |arg_idx| {
+                    try ir.store.getPattern(arg_idx).pushToSExprTree(ir, tree, arg_idx);
+                }
+                try tree.endNode(args_begin, args_attrs);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_run_low_level => |run_ll| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-run-low-level");
+                const op_name = try std.fmt.allocPrint(ir.gpa, "{s}", .{@tagName(run_ll.op)});
+                defer ir.gpa.free(op_name);
+                try tree.pushStringPair("op", op_name);
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                const attrs = tree.beginNode();
+
+                const run_args_begin = tree.beginNode();
+                try tree.pushStaticAtom("args");
+                const run_args_attrs = tree.beginNode();
+                for (ir.store.exprSlice(run_ll.args)) |arg_idx| {
+                    try ir.store.getExpr(arg_idx).pushToSExprTree(ir, tree, arg_idx);
+                }
+                try tree.endNode(run_args_begin, run_args_attrs);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_crash => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-crash");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                try tree.pushStringPair("msg", ir.getString(e.msg));
+                const attrs = tree.beginNode();
+                try tree.endNode(begin, attrs);
+            },
+            .e_dbg => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-dbg");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                const attrs = tree.beginNode();
+
+                try ir.store.getExpr(e.expr).pushToSExprTree(ir, tree, e.expr);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_expect_err => |e| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-expect-err");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                try tree.pushStringPair("snippet", ir.getString(e.snippet));
+                const attrs = tree.beginNode();
+
+                try ir.store.getExpr(e.expr).pushToSExprTree(ir, tree, e.expr);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_expect => |expect_expr| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-expect");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                const attrs = tree.beginNode();
+
+                // Add body expression
+                try ir.store.getExpr(expect_expr.body).pushToSExprTree(ir, tree, expect_expr.body);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_return => |ret| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-return");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                const attrs = tree.beginNode();
+
+                // Add inner expression
+                try ir.store.getExpr(ret.expr).pushToSExprTree(ir, tree, ret.expr);
+
+                try tree.endNode(begin, attrs);
+            },
+            .e_break => {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-break");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                const attrs = tree.beginNode();
+                try tree.endNode(begin, attrs);
+            },
+            .e_for => |for_expr| {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("e-for");
+                const region = ir.store.getExprRegion(expr_idx);
+                try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+                const attrs = tree.beginNode();
+
+                // Add pattern
+                try ir.store.getPattern(for_expr.patt).pushToSExprTree(ir, tree, for_expr.patt);
+
+                // Add list expression
+                try ir.store.getExpr(for_expr.expr).pushToSExprTree(ir, tree, for_expr.expr);
+
+                // Add body expression
+                try ir.store.getExpr(for_expr.body).pushToSExprTree(ir, tree, for_expr.body);
+
+                try tree.endNode(begin, attrs);
+            },
+        }
+    }
+
+    /// Pattern matching expression that destructures values and executes different branches.
+    /// Match expressions are exhaustive - they must handle all possible cases of the matched value.
+    /// Each branch consists of one or more patterns, an optional guard condition, and a result expression.
+    ///
+    /// ```roc
+    /// match result {
+    ///     Ok(value) => value,
+    ///     Err(msg) => crash("Error: ${msg}"),
+    /// }
+    ///
+    /// match shape {
+    ///     Circle(radius) if radius > 0 => 3.14 * radius * radius,
+    ///     Circle(_) => 0,
+    ///     Rectangle(w, h) => w * h,
+    ///     Square(side) => side * side,
+    /// }
+    /// ```
+    pub const Match = struct {
+        /// The condition of the match expression.
+        cond: Expr.Idx,
+        /// The branches of the `match`
+        branches: Branch.Span,
+        /// Marks whether a match expression is exhaustive using a variable.
+        exhaustive: TypeVar,
+        /// Whether this match was desugared from the `?` (try suffix) operator.
+        /// When true, we need to verify the condition is actually a Try type.
+        is_try_suffix: bool,
+        /// Whether to skip user-facing exhaustiveness/redundancy diagnostics for this match.
+        /// This is true for compiler-generated matches such as `?` and `??` desugarings.
+        skip_exhaustiveness: bool,
+
+        pub const Idx = enum(u32) { _ };
+        pub const Span = extern struct { span: base.DataSpan };
+
+        /// A single branch within a match expression.
+        /// Contains patterns to match against, an optional guard condition,
+        /// and the expression to evaluate when the patterns match.
+        ///
+        /// ```roc
+        /// # This branch has a single pattern `Ok(value)` and expression `value`
+        /// Ok(value) => value
+        ///
+        /// # This branch has pattern `x` with guard `x > 0` and expression `"positive"`
+        /// x if x > 0 => "positive"
+        /// ```
+        pub const Branch = struct {
+            patterns: Match.BranchPattern.Span,
+            value: Expr.Idx,
+            guard: ?Expr.Idx,
+            /// Marks whether a match branch is redundant using a variable.
+            redundant: TypeVar,
+
+            pub fn pushToSExprTree(self: *const Match.Branch, ir: *const ModuleEnv, tree: *SExprTree, _: Match.Branch.Idx) std.mem.Allocator.Error!void {
+                const begin = tree.beginNode();
+                try tree.pushStaticAtom("branch");
+                const attrs = tree.beginNode();
+
+                const patterns_begin = tree.beginNode();
+                try tree.pushStaticAtom("patterns");
+                const patterns_attrs = tree.beginNode();
+                const patterns_slice = ir.store.sliceMatchBranchPatterns(self.patterns);
+                for (patterns_slice) |branch_pat_idx| {
+                    const branch_pat = ir.store.getMatchBranchPattern(branch_pat_idx);
+                    const pattern_begin = tree.beginNode();
+                    try tree.pushStaticAtom("pattern");
+                    try tree.pushBoolPair("degenerate", branch_pat.degenerate);
+                    const pattern_attrs = tree.beginNode();
+                    const pattern = ir.store.getPattern(branch_pat.pattern);
+                    try pattern.pushToSExprTree(ir, tree, branch_pat.pattern);
+                    try tree.endNode(pattern_begin, pattern_attrs);
+                }
+                try tree.endNode(patterns_begin, patterns_attrs);
+
+                const value_begin = tree.beginNode();
+                try tree.pushStaticAtom("value");
+                const value_attrs = tree.beginNode();
+                try ir.store.getExpr(self.value).pushToSExprTree(ir, tree, self.value);
+                try tree.endNode(value_begin, value_attrs);
+
+                if (self.guard) |guard_idx| {
+                    const guard_begin = tree.beginNode();
+                    try tree.pushStaticAtom("guard");
+                    const guard_attrs = tree.beginNode();
+                    try ir.store.getExpr(guard_idx).pushToSExprTree(ir, tree, guard_idx);
+                    try tree.endNode(guard_begin, guard_attrs);
+                }
+
+                try tree.endNode(begin, attrs);
+            }
+
+            pub const Idx = enum(u32) { _ };
+            pub const Span = extern struct { span: DataSpan };
+        };
+
+        /// A pattern within a match branch, which may be part of an OR pattern.
+        /// Multiple patterns in a single branch are separated by `|`.
+        /// Each pattern can independently match the scrutinee value.
+        ///
+        /// ```roc
+        /// match value {
+        ///     # Single pattern in branch
+        ///     Some(x) => x,
+        ///     # Multiple patterns in branch using bar separator `|`
+        ///     None | Empty => 0,
+        /// }
+        /// ```
+        pub const BranchPattern = struct {
+            pattern: CIR.Pattern.Idx,
+            /// Degenerate branch patterns are those that don't fully bind symbols that the branch body
+            /// needs. For example, in `A x | B y -> x`, the `B y` pattern is degenerate.
+            /// Degenerate patterns emit a runtime error if reached in a program.
+            degenerate: bool,
+
+            pub const Idx = enum(u32) { _ };
+            pub const Span = extern struct { span: base.DataSpan };
+        };
+
+        pub fn pushToSExprTree(self: *const @This(), ir: *const ModuleEnv, tree: *SExprTree, region: Region) std.mem.Allocator.Error!void {
+            const begin = tree.beginNode();
+            try tree.pushStaticAtom("match");
+            try ir.appendRegionInfoToSExprTreeFromRegion(tree, region);
+            const attrs = tree.beginNode();
+
+            const cond_begin = tree.beginNode();
+            try tree.pushStaticAtom("cond");
+            const cond_attrs = tree.beginNode();
+            try ir.store.getExpr(self.cond).pushToSExprTree(ir, tree, self.cond);
+            try tree.endNode(cond_begin, cond_attrs);
+
+            const branches_begin = tree.beginNode();
+            try tree.pushStaticAtom("branches");
+            const branches_attrs = tree.beginNode();
+            for (ir.store.matchBranchSlice(self.branches)) |branch_idx| {
+                try ir.store.getMatchBranch(branch_idx).pushToSExprTree(ir, tree, branch_idx);
+            }
+            try tree.endNode(branches_begin, branches_attrs);
+
+            try tree.endNode(begin, attrs);
+        }
+    };
+
+    /// Represents a variable captured by a lambda
+    pub const Capture = struct {
+        name: base.Ident.Idx,
+        pattern_idx: CIR.Pattern.Idx,
+        scope_depth: u32,
+
+        pub const Idx = enum(u32) { _ };
+        pub const Span = extern struct { span: base.DataSpan };
+    };
+};

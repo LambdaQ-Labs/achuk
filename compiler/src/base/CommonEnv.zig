@@ -1,0 +1,669 @@
+//! CommonEnv provides shared environment state that is common across all modules.
+//! This includes identifier and string literal interning, exposed items tracking,
+//! source code management, and diagnostic information like line start positions.
+//! It serves as a central repository for data that needs to be accessed across
+//! different phases of compilation.
+
+const std = @import("std");
+const Allocator = std.mem.Allocator;
+const builtin = @import("builtin");
+const collections = @import("collections");
+
+const Ident = @import("Ident.zig");
+const StringLiteral = @import("StringLiteral.zig");
+const RegionInfo = @import("RegionInfo.zig");
+const Region = @import("Region.zig");
+const SafeList = collections.SafeList;
+const ExposedItems = collections.ExposedItems;
+const CompactWriter = collections.CompactWriter;
+
+const CommonEnv = @This();
+
+idents: Ident.Store,
+strings: StringLiteral.Store,
+string_builder: StringLiteral.BuilderState = .{},
+strings_insertable: bool = true,
+/// The items (a combination of types and values) that this module exposes
+exposed_items: ExposedItems,
+/// Line starts for error reporting. We retain only start and offset positions in the IR
+/// and then use these line starts to calculate the line number and column number as required.
+/// this is a more compact representation at the expense of extra computation only when generating error diagnostics.
+line_starts: SafeList(u32),
+/// The source code of this module.
+source: []const u8,
+
+pub fn init(gpa: std.mem.Allocator, source: []const u8) std.mem.Allocator.Error!CommonEnv {
+    return CommonEnv{
+        .idents = try Ident.Store.initCapacity(gpa, 1024),
+        .strings = try StringLiteral.Store.initCapacityBytes(gpa, 4096),
+        .string_builder = .{},
+        .strings_insertable = true,
+        .exposed_items = ExposedItems.init(),
+        .line_starts = try SafeList(u32).initCapacity(gpa, 256),
+        .source = source,
+    };
+}
+
+pub fn deinit(self: *CommonEnv, gpa: std.mem.Allocator) void {
+    self.idents.deinit(gpa);
+    self.string_builder.deinit(gpa);
+    self.strings.deinit(gpa);
+    self.exposed_items.deinit(gpa);
+    self.line_starts.deinit(gpa);
+    // NOTE: Caller owns source and is responsible for freeing it.
+}
+
+/// Public function `clone`.
+pub fn clone(self: *const CommonEnv, gpa: std.mem.Allocator) std.mem.Allocator.Error!CommonEnv {
+    var idents = try self.idents.clone(gpa);
+    errdefer idents.deinit(gpa);
+
+    var strings = try self.strings.clone(gpa);
+    errdefer strings.deinit(gpa);
+
+    var string_builder = if (self.strings_insertable)
+        try self.string_builder.clone(gpa)
+    else
+        StringLiteral.BuilderState{};
+    errdefer string_builder.deinit(gpa);
+
+    var exposed_items = try self.exposed_items.clone(gpa);
+    errdefer exposed_items.deinit(gpa);
+
+    var line_starts = try self.line_starts.clone(gpa);
+    errdefer line_starts.deinit(gpa);
+
+    return CommonEnv{
+        .idents = idents,
+        .strings = strings,
+        .string_builder = string_builder,
+        .strings_insertable = self.strings_insertable,
+        .exposed_items = exposed_items,
+        .line_starts = line_starts,
+        .source = self.source,
+    };
+}
+
+/// Add the given offset to the memory addresses of all pointers in `self`.
+pub fn relocate(self: *CommonEnv, offset: isize) void {
+    // Relocate all sub-structures
+    self.idents.relocate(offset);
+    self.strings.relocate(offset);
+    self.exposed_items.relocate(offset);
+    self.line_starts.relocate(offset);
+    // Relocate source slice pointer if it is non-empty.
+    // The underlying bytes live in the same allocation as the rest of the
+    // module data (e.g. shared memory used by the interpreter), so we can
+    // adjust the pointer by the same offset.
+    if (self.source.len > 0) {
+        const old_ptr = @intFromPtr(self.source.ptr);
+        const new_ptr = @as(isize, @intCast(old_ptr)) + offset;
+        self.source.ptr = @ptrFromInt(@as(usize, @intCast(new_ptr)));
+    }
+}
+
+/// Serialize this CommonEnv to the given CompactWriter.
+/// IMPORTANT: The returned pointer points to memory inside the writer!
+/// Attempting to dereference this pointer or calling any methods on it
+/// is illegal behavior!
+pub fn serialize(
+    self: *const CommonEnv,
+    allocator: std.mem.Allocator,
+    writer: *CompactWriter,
+) std.mem.Allocator.Error!*const CommonEnv {
+    // First, write the CommonEnv struct itself
+    const offset_self = try writer.appendAlloc(allocator, CommonEnv);
+
+    // Then serialize the sub-structures and update the struct
+    offset_self.* = .{
+        .idents = (try self.idents.serialize(allocator, writer)).*,
+        .strings = (try self.strings.serialize(allocator, writer)).*,
+        .string_builder = .{},
+        .strings_insertable = false,
+        .exposed_items = (try self.exposed_items.serialize(allocator, writer)).*,
+        .line_starts = (try self.line_starts.serialize(allocator, writer)).*,
+        .source = "", // Will be set when deserializing
+    };
+
+    return @constCast(offset_self);
+}
+
+/// Serialized representation of CommonEnv
+/// Uses extern struct to guarantee consistent field layout across optimization levels.
+pub const Serialized = extern struct {
+    idents: Ident.Store.Serialized,
+    strings: StringLiteral.Store.Serialized,
+    exposed_items: ExposedItems.Serialized,
+    line_starts: SafeList(u32).Serialized,
+    source: [2]u64, // Reserve space for slice (ptr + len), provided during deserialization
+
+    /// Serialize a ModuleEnv into this Serialized struct, appending data to the writer
+    pub fn serialize(
+        self: *Serialized,
+        env: *const CommonEnv,
+        allocator: std.mem.Allocator,
+        writer: *CompactWriter,
+    ) Allocator.Error!void {
+        // Serialize each component using its Serialized struct
+        try self.idents.serialize(&env.idents, allocator, writer);
+        try self.strings.serialize(&env.strings, allocator, writer);
+        try self.exposed_items.serialize(&env.exposed_items, allocator, writer);
+        try self.line_starts.serialize(&env.line_starts, allocator, writer);
+
+        // Set source to all zeros; the space needs to be here,
+        // but the value will be set separately during deserialization.
+        self.source = .{ 0, 0 };
+    }
+
+    /// Deserialize into a CommonEnv value (no in-place modification of cache buffer).
+    /// The base_addr parameter is the base address of the serialized buffer in memory.
+    pub fn deserializeInto(
+        self: *const Serialized,
+        base_addr: usize,
+        source: []const u8,
+    ) CommonEnv {
+        return CommonEnv{
+            .idents = self.idents.deserializeInto(base_addr),
+            .strings = self.strings.deserializeInto(base_addr),
+            .string_builder = .{},
+            .strings_insertable = false,
+            .exposed_items = self.exposed_items.deserializeInto(base_addr),
+            .line_starts = self.line_starts.deserializeInto(base_addr),
+            .source = source,
+        };
+    }
+};
+
+/// Inserts an identifier into the store and returns its index.
+pub fn insertIdent(self: *CommonEnv, gpa: std.mem.Allocator, ident: Ident) std.mem.Allocator.Error!Ident.Idx {
+    return try self.idents.insert(gpa, ident);
+}
+
+/// Searches for an identifier by its text content, returning its index if found.
+pub fn findIdent(self: *const CommonEnv, text: []const u8) ?Ident.Idx {
+    return self.idents.findByString(text);
+}
+
+/// Finds an identifier from another CommonEnv's store in this store.
+/// Performs cross-store ident resolution without exposing string operations to callers.
+pub fn findIdentFrom(self: *const CommonEnv, source: *const CommonEnv, source_idx: Ident.Idx) ?Ident.Idx {
+    return self.findIdent(source.getIdent(source_idx));
+}
+
+/// Finds or creates an identifier from another CommonEnv's store in this store.
+/// Performs cross-store ident resolution without exposing string operations to callers.
+pub fn insertIdentFrom(self: *CommonEnv, gpa: std.mem.Allocator, source: *const CommonEnv, source_idx: Ident.Idx) std.mem.Allocator.Error!Ident.Idx {
+    return self.insertIdent(gpa, Ident.for_text(source.getIdent(source_idx)));
+}
+
+/// Retrieves the text of an identifier by its index.
+pub fn getIdent(self: *const CommonEnv, idx: Ident.Idx) []const u8 {
+    return self.idents.getText(idx);
+}
+
+/// Returns a const reference to the identifier store.
+pub fn getIdentStore(self: *const CommonEnv) *const Ident.Store {
+    return &self.idents;
+}
+
+/// Inserts a string literal into the store and returns its index.
+pub fn insertString(self: *CommonEnv, gpa: std.mem.Allocator, string: []const u8) std.mem.Allocator.Error!StringLiteral.Idx {
+    self.assertStringsInsertable();
+    return try self.string_builder.insert(&self.strings, gpa, string);
+}
+
+/// Retrieves a string literal by its index.
+pub fn getString(self: *const CommonEnv, idx: StringLiteral.Idx) []const u8 {
+    return self.strings.get(idx);
+}
+
+/// Returns a mutable reference to the string literal store.
+pub fn getStringStore(self: *CommonEnv) *StringLiteral.Store {
+    return &self.strings;
+}
+
+fn assertStringsInsertable(self: *const CommonEnv) void {
+    if (self.strings_insertable) return;
+
+    if (comptime builtin.mode == .Debug) {
+        std.debug.panic("CommonEnv invariant violated: attempted to insert into frozen string literal store", .{});
+    }
+    unreachable;
+}
+
+/// Adds an identifier to the exposed items list by its index.
+pub fn addExposedById(self: *CommonEnv, gpa: std.mem.Allocator, ident_idx: Ident.Idx) Allocator.Error!void {
+    return try self.exposed_items.addExposedById(gpa, @bitCast(ident_idx));
+}
+
+/// Retrieves the explicit target associated with an exposed identifier.
+pub fn getExposedTargetById(self: *const CommonEnv, allocator: std.mem.Allocator, ident_idx: Ident.Idx) ?collections.ExposedItemTarget {
+    return self.exposed_items.getTargetById(allocator, @bitCast(ident_idx));
+}
+
+/// Retrieves the value definition node associated with an exposed identifier.
+pub fn getValueNodeIndexById(self: *const CommonEnv, allocator: std.mem.Allocator, ident_idx: Ident.Idx) ?u32 {
+    return self.exposed_items.getValueNodeIndexById(allocator, @bitCast(ident_idx));
+}
+
+/// Retrieves the type declaration node associated with an exposed identifier.
+pub fn getTypeNodeIndexById(self: *const CommonEnv, allocator: std.mem.Allocator, ident_idx: Ident.Idx) ?u32 {
+    return self.exposed_items.getTypeNodeIndexById(allocator, @bitCast(ident_idx));
+}
+
+/// Associates a value definition node index with an exposed identifier.
+pub fn setValueNodeIndexById(self: *CommonEnv, gpa: std.mem.Allocator, ident_idx: Ident.Idx, node_idx: u32) Allocator.Error!void {
+    return try self.exposed_items.setValueNodeIndexById(gpa, @bitCast(ident_idx), node_idx);
+}
+
+/// Associates a type declaration node index with an exposed identifier.
+pub fn setTypeNodeIndexById(self: *CommonEnv, gpa: std.mem.Allocator, ident_idx: Ident.Idx, node_idx: u32) Allocator.Error!void {
+    return try self.exposed_items.setTypeNodeIndexById(gpa, @bitCast(ident_idx), node_idx);
+}
+
+/// Get region info for a given region
+pub fn getRegionInfo(self: *const CommonEnv, region: Region) error{ BeginTooLarge, EndTooLarge, InvalidPosition, NoLineStarts, OutOfOrder }!RegionInfo {
+    return RegionInfo.position(
+        self.source,
+        self.line_starts.items.items,
+        region.start.offset,
+        region.end.offset,
+    );
+}
+
+/// Returns diagnostic position information for the given region.
+/// This is a standalone utility function that takes the source text as a parameter
+/// to avoid storing it in the cacheable IR structure.
+pub fn calcRegionInfo(self: *const CommonEnv, region: Region) RegionInfo {
+    const empty = RegionInfo{
+        .start_line_idx = 0,
+        .start_col_idx = 0,
+        .end_line_idx = 0,
+        .end_col_idx = 0,
+    };
+
+    // In the Can IR, regions store byte offsets directly, not token indices.
+    // We can use these offsets directly to calculate the diagnostic position.
+    const source = self.source;
+
+    const info = RegionInfo.position(
+        source,
+        self.line_starts.items.items,
+        region.start.offset,
+        region.end.offset,
+    ) catch {
+        // Return a zero position if we can't calculate it
+        return empty;
+    };
+
+    return info;
+}
+
+/// Returns the entire source code content.
+pub fn getSourceAll(self: *const CommonEnv) []const u8 {
+    return self.source;
+}
+
+/// Calculate and store line starts from the source text
+pub fn calcLineStarts(self: *CommonEnv, gpa: std.mem.Allocator) Allocator.Error!void {
+    // Reset line_starts by creating a new SafeList
+    self.line_starts.deinit(gpa);
+    self.line_starts = try collections.SafeList(u32).initCapacity(gpa, 256);
+
+    // if the source is empty, we're done
+    if (self.getSourceAll().len == 0) {
+        return;
+    }
+
+    // the first line starts at offset 0
+    {
+        const expected_idx = self.line_starts.items.items.len;
+        const idx = try self.line_starts.append(gpa, 0);
+        if (comptime builtin.mode == .Debug) {
+            std.debug.assert(@intFromEnum(idx) == expected_idx);
+        } else if (@intFromEnum(idx) != expected_idx) {
+            unreachable;
+        }
+    }
+
+    // find all newlines in the source, save their offset
+    var pos: u32 = 0;
+    for (self.getSourceAll()) |c| {
+        if (c == '\n') {
+            // next line starts after the newline in the current position
+            const expected_idx = self.line_starts.items.items.len;
+            const idx = try self.line_starts.append(gpa, pos + 1);
+            if (comptime builtin.mode == .Debug) {
+                std.debug.assert(@intFromEnum(idx) == expected_idx);
+            } else if (@intFromEnum(idx) != expected_idx) {
+                unreachable;
+            }
+        }
+        pos += 1;
+    }
+}
+
+/// Returns all line start positions for source code position mapping.
+pub fn getLineStartsAll(self: *const CommonEnv) []const u32 {
+    return self.line_starts.items.items;
+}
+
+/// Get the source text for a given region
+pub fn getSource(self: *const CommonEnv, region: Region) []const u8 {
+    return self.source[region.start.offset..region.end.offset];
+}
+
+/// Get the source line for a given region
+pub fn getSourceLine(self: *const CommonEnv, region: Region) error{ BeginTooLarge, EndTooLarge, InvalidPosition, NoLineStarts, OutOfOrder }![]const u8 {
+    const region_info = try self.getRegionInfo(region);
+    const line_start = self.line_starts.items.items[region_info.start_line_idx];
+    const line_end = if (region_info.start_line_idx + 1 < self.line_starts.items.items.len)
+        self.line_starts.items.items[region_info.start_line_idx + 1]
+    else
+        self.source.len;
+
+    return self.source[line_start..line_end];
+}
+
+test "CommonEnv.Serialized roundtrip" {
+    const testing = std.testing;
+    const gpa = testing.allocator;
+
+    const source = "hello world\ntest line 2\n";
+
+    // Create original CommonEnv with some test data
+    var original = try CommonEnv.init(gpa, source);
+    defer original.deinit(gpa);
+
+    // Add some test data
+    const hello_idx = try original.insertIdent(gpa, Ident.for_text("hello"));
+    const world_idx = try original.insertIdent(gpa, Ident.for_text("world"));
+
+    const test_string_idx = try original.insertString(gpa, "test string");
+    try original.addExposedById(gpa, hello_idx);
+
+    {
+        const expected_idx = original.line_starts.items.items.len;
+        const idx = try original.line_starts.append(gpa, 0);
+        if (comptime builtin.mode == .Debug) {
+            std.debug.assert(@intFromEnum(idx) == expected_idx);
+        } else if (@intFromEnum(idx) != expected_idx) {
+            unreachable;
+        }
+    }
+    {
+        const expected_idx = original.line_starts.items.items.len;
+        const idx = try original.line_starts.append(gpa, 10);
+        if (comptime builtin.mode == .Debug) {
+            std.debug.assert(@intFromEnum(idx) == expected_idx);
+        } else if (@intFromEnum(idx) != expected_idx) {
+            unreachable;
+        }
+    }
+    {
+        const expected_idx = original.line_starts.items.items.len;
+        const idx = try original.line_starts.append(gpa, 20);
+        if (comptime builtin.mode == .Debug) {
+            std.debug.assert(@intFromEnum(idx) == expected_idx);
+        } else if (@intFromEnum(idx) != expected_idx) {
+            unreachable;
+        }
+    }
+
+    // Create a CompactWriter
+    var writer = CompactWriter.init();
+    defer writer.deinit(gpa);
+
+    // Create temp file
+    const io = std.testing.io;
+    var tmp_dir = testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
+    const tmp_file = try tmp_dir.dir.createFile(io, "test.compact", .{ .read = true });
+    defer tmp_file.close(io);
+
+    // Serialize using the proper Serialized struct pattern
+    const serialized = try writer.appendAlloc(gpa, CommonEnv.Serialized);
+    try serialized.serialize(&original, gpa, &writer);
+
+    // Write to file
+    try writer.writeGather(tmp_file, io);
+
+    // Read back with proper alignment
+    const buffer = try gpa.alignedAlloc(u8, CompactWriter.SERIALIZATION_ALIGNMENT, writer.total_bytes);
+    defer gpa.free(buffer);
+    _ = try tmp_file.readPositionalAll(io, buffer, 0);
+
+    // The Serialized struct is at the beginning of the buffer
+    const deserialized_ptr = @as(*CommonEnv.Serialized, @ptrCast(@alignCast(buffer.ptr)));
+    const env = deserialized_ptr.deserializeInto(@intFromPtr(buffer.ptr), source);
+
+    // Verify the data was preserved
+    try testing.expectEqualStrings("hello", env.getIdent(hello_idx));
+    try testing.expectEqualStrings("world", env.getIdent(world_idx));
+    try testing.expectEqualStrings("test string", env.getString(test_string_idx));
+
+    try testing.expectEqual(@as(usize, 1), env.exposed_items.count());
+    try testing.expectEqual(@as(usize, 3), env.line_starts.len());
+    try testing.expectEqual(@as(u32, 0), env.line_starts.items.items[0]);
+    try testing.expectEqual(@as(u32, 10), env.line_starts.items.items[1]);
+    try testing.expectEqual(@as(u32, 20), env.line_starts.items.items[2]);
+
+    try testing.expectEqualStrings(source, env.source);
+}
+
+test "CommonEnv.Serialized roundtrip with empty data" {
+    const testing = std.testing;
+    const gpa = testing.allocator;
+
+    const source = "";
+
+    // Create original CommonEnv with no data
+    var original = try CommonEnv.init(gpa, source);
+    defer original.deinit(gpa);
+
+    // Create a CompactWriter
+    var writer = CompactWriter.init();
+    defer writer.deinit(gpa);
+
+    // Create temp file
+    var tmp_dir = testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
+    const io = std.testing.io;
+    const tmp_file = try tmp_dir.dir.createFile(io, "test_empty.compact", .{ .read = true });
+    defer tmp_file.close(io);
+
+    // Serialize using the proper Serialized struct pattern
+    const serialized = try writer.appendAlloc(gpa, CommonEnv.Serialized);
+    try serialized.serialize(&original, gpa, &writer);
+
+    // Write to file
+    try writer.writeGather(tmp_file, io);
+
+    // Read back with proper alignment
+    const buffer = try gpa.alignedAlloc(u8, CompactWriter.SERIALIZATION_ALIGNMENT, writer.total_bytes);
+    defer gpa.free(buffer);
+    _ = try tmp_file.readPositionalAll(io, buffer, 0);
+
+    // The Serialized struct is at the beginning of the buffer
+    const deserialized_ptr = @as(*CommonEnv.Serialized, @ptrCast(@alignCast(buffer.ptr)));
+    const env = deserialized_ptr.deserializeInto(@intFromPtr(buffer.ptr), source);
+
+    // Verify empty state is preserved
+    try testing.expectEqual(@as(u32, 0), env.idents.interner.entry_count);
+    try testing.expectEqual(@as(usize, 0), env.exposed_items.count());
+    try testing.expectEqual(@as(usize, 0), env.line_starts.len());
+    try testing.expectEqualStrings(source, env.source);
+}
+
+test "CommonEnv.Serialized roundtrip with large data" {
+    const testing = std.testing;
+    const gpa = testing.allocator;
+
+    // Create a larger source with many lines
+    var source_builder = std.array_list.Managed(u8).init(gpa);
+    defer source_builder.deinit();
+
+    for (0..100) |i| {
+        const line = try std.fmt.allocPrint(gpa, "Line {}: This is a test line with some content\n", .{i});
+        defer gpa.free(line);
+        try source_builder.appendSlice(line);
+    }
+    const source = source_builder.items;
+
+    // Create original CommonEnv with large test data
+    var original = try CommonEnv.init(gpa, source);
+    defer original.deinit(gpa);
+
+    // Add many identifiers
+    var ident_indices = std.array_list.Managed(Ident.Idx).init(gpa);
+    defer ident_indices.deinit();
+
+    for (0..50) |i| {
+        var ident_name = std.array_list.Managed(u8).init(gpa);
+        defer ident_name.deinit();
+        const name = try std.fmt.allocPrint(gpa, "ident_{}", .{i});
+        defer gpa.free(name);
+        try ident_name.appendSlice(name);
+        const idx = try original.insertIdent(gpa, Ident.for_text(ident_name.items));
+        try ident_indices.append(idx);
+    }
+
+    // Add many strings and track their indices
+    var string_indices = std.array_list.Managed(StringLiteral.Idx).init(gpa);
+    defer string_indices.deinit();
+
+    for (0..25) |i| {
+        var string_content = std.array_list.Managed(u8).init(gpa);
+        defer string_content.deinit();
+        const str = try std.fmt.allocPrint(gpa, "string_literal_{}", .{i});
+        defer gpa.free(str);
+        try string_content.appendSlice(str);
+        const idx = try original.insertString(gpa, string_content.items);
+        try string_indices.append(idx);
+    }
+
+    // Add some exposed items
+    try original.addExposedById(gpa, ident_indices.items[0]);
+    try original.addExposedById(gpa, ident_indices.items[10]);
+    try original.addExposedById(gpa, ident_indices.items[25]);
+
+    // Add line starts for the source
+    try original.calcLineStarts(gpa);
+
+    // Create a CompactWriter
+    var writer = CompactWriter.init();
+    defer writer.deinit(gpa);
+
+    // Create temp file
+    var tmp_dir = testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
+    const io = std.testing.io;
+    const tmp_file = try tmp_dir.dir.createFile(io, "test_large.compact", .{ .read = true });
+    defer tmp_file.close(io);
+
+    // Serialize using the proper Serialized struct pattern
+    const serialized = try writer.appendAlloc(gpa, CommonEnv.Serialized);
+    try serialized.serialize(&original, gpa, &writer);
+
+    // Write to file
+    try writer.writeGather(tmp_file, io);
+
+    // Read back with proper alignment
+    const buffer = try gpa.alignedAlloc(u8, CompactWriter.SERIALIZATION_ALIGNMENT, writer.total_bytes);
+    defer gpa.free(buffer);
+    _ = try tmp_file.readPositionalAll(io, buffer, 0);
+
+    // The Serialized struct is at the beginning of the buffer
+    const deserialized_ptr = @as(*CommonEnv.Serialized, @ptrCast(@alignCast(buffer.ptr)));
+    const env = deserialized_ptr.deserializeInto(@intFromPtr(buffer.ptr), source);
+
+    // Verify large data was preserved
+    try testing.expectEqual(@as(u32, 50), env.idents.interner.entry_count);
+    try testing.expectEqual(@as(usize, 3), env.exposed_items.count());
+    try testing.expectEqual(@as(usize, 101), env.line_starts.len()); // 100 lines + 1 for first line at offset 0
+    try testing.expectEqualStrings(source, env.source);
+
+    // Verify some specific identifiers
+    try testing.expectEqualStrings("ident_0", env.getIdent(ident_indices.items[0]));
+    try testing.expectEqualStrings("ident_25", env.getIdent(ident_indices.items[25]));
+    try testing.expectEqualStrings("ident_49", env.getIdent(ident_indices.items[49]));
+
+    // Verify some specific strings using the actual indices returned
+    try testing.expectEqualStrings("string_literal_0", env.getString(string_indices.items[0]));
+    try testing.expectEqualStrings("string_literal_12", env.getString(string_indices.items[12]));
+    try testing.expectEqualStrings("string_literal_24", env.getString(string_indices.items[24]));
+
+    // Verify line starts
+    try testing.expectEqual(@as(u32, 0), env.line_starts.items.items[0]);
+    // Calculate the actual expected value for the second line start
+    const first_line = "Line 0: This is a test line with some content\n";
+    const expected_second_line_start = first_line.len;
+    try testing.expectEqual(@as(u32, expected_second_line_start), env.line_starts.items.items[1]);
+}
+
+test "CommonEnv.Serialized roundtrip with special characters" {
+    const testing = std.testing;
+    const gpa = testing.allocator;
+
+    const source = "Hello\nWorld\nTest\nLine\n";
+
+    // Create original CommonEnv with special characters
+    var original = try CommonEnv.init(gpa, source);
+    defer original.deinit(gpa);
+
+    // Add identifiers with special characters
+    const unicode_idx = try original.insertIdent(gpa, Ident.for_text("café"));
+    const emoji_idx = try original.insertIdent(gpa, Ident.for_text("🚀"));
+    const special_idx = try original.insertIdent(gpa, Ident.for_text("test_123"));
+
+    // Add strings with special characters and track their indices
+    const string1_idx = try original.insertString(gpa, "Hello, 世界!");
+    const string2_idx = try original.insertString(gpa, "Test\nwith\nnewlines");
+    const string3_idx = try original.insertString(gpa, "Tab\there");
+
+    try original.addExposedById(gpa, unicode_idx);
+    try original.addExposedById(gpa, emoji_idx);
+
+    // Add line starts
+    try original.calcLineStarts(gpa);
+
+    // Create a CompactWriter
+    var writer = CompactWriter.init();
+    defer writer.deinit(gpa);
+
+    // Create temp file
+    var tmp_dir = testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
+    const io = std.testing.io;
+    const tmp_file = try tmp_dir.dir.createFile(io, "test_special.compact", .{ .read = true });
+    defer tmp_file.close(io);
+
+    // Serialize using the proper Serialized struct pattern
+    const serialized = try writer.appendAlloc(gpa, CommonEnv.Serialized);
+    try serialized.serialize(&original, gpa, &writer);
+
+    // Write to file
+    try writer.writeGather(tmp_file, io);
+
+    // Read back with proper alignment
+    const buffer = try gpa.alignedAlloc(u8, CompactWriter.SERIALIZATION_ALIGNMENT, writer.total_bytes);
+    defer gpa.free(buffer);
+    _ = try tmp_file.readPositionalAll(io, buffer, 0);
+
+    // The Serialized struct is at the beginning of the buffer
+    const deserialized_ptr = @as(*CommonEnv.Serialized, @ptrCast(@alignCast(buffer.ptr)));
+    const env = deserialized_ptr.deserializeInto(@intFromPtr(buffer.ptr), source);
+
+    // Verify special characters were preserved
+    try testing.expectEqualStrings("café", env.getIdent(unicode_idx));
+    try testing.expectEqualStrings("🚀", env.getIdent(emoji_idx));
+    try testing.expectEqualStrings("test_123", env.getIdent(special_idx));
+
+    try testing.expectEqualStrings("Hello, 世界!", env.getString(string1_idx));
+    try testing.expectEqualStrings("Test\nwith\nnewlines", env.getString(string2_idx));
+    try testing.expectEqualStrings("Tab\there", env.getString(string3_idx));
+
+    try testing.expectEqual(@as(usize, 2), env.exposed_items.count());
+    try testing.expectEqual(@as(usize, 5), env.line_starts.len()); // 4 lines + 1 for first line at offset 0
+    try testing.expectEqualStrings(source, env.source);
+}

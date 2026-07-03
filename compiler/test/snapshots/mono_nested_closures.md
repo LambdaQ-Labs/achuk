@@ -1,0 +1,133 @@
+# META
+~~~ini
+description=Mono test: nested closures with captures at top-level
+type=mono
+~~~
+# SOURCE
+~~~roc
+x = 10
+
+make_adder = |y| |z| x + y + z
+
+add_five = make_adder(5)
+
+result = add_five(3)
+~~~
+# MONO
+~~~roc
+x : Dec
+x = 10
+
+make_adder : Dec -> (Dec -> Dec)
+make_adder = |y| |z| x + y + z
+
+add_five : Dec -> Dec
+add_five = make_adder(5)
+
+result : Dec
+result = add_five(3)
+~~~
+# FORMATTED
+~~~roc
+NO CHANGE
+~~~
+# EXPECTED
+NIL
+# PROBLEMS
+NIL
+# TOKENS
+~~~zig
+LowerIdent,OpAssign,Int,
+LowerIdent,OpAssign,OpBar,LowerIdent,OpBar,OpBar,LowerIdent,OpBar,LowerIdent,OpPlus,LowerIdent,OpPlus,LowerIdent,
+LowerIdent,OpAssign,LowerIdent,NoSpaceOpenRound,Int,CloseRound,
+LowerIdent,OpAssign,LowerIdent,NoSpaceOpenRound,Int,CloseRound,
+EndOfFile,
+~~~
+# PARSE
+~~~clojure
+(file
+	(type-module)
+	(statements
+		(s-decl
+			(p-ident (raw "x"))
+			(e-int (raw "10")))
+		(s-decl
+			(p-ident (raw "make_adder"))
+			(e-lambda
+				(args
+					(p-ident (raw "y")))
+				(e-lambda
+					(args
+						(p-ident (raw "z")))
+					(e-binop (op "+")
+						(e-binop (op "+")
+							(e-ident (raw "x"))
+							(e-ident (raw "y")))
+						(e-ident (raw "z"))))))
+		(s-decl
+			(p-ident (raw "add_five"))
+			(e-apply
+				(e-ident (raw "make_adder"))
+				(e-int (raw "5"))))
+		(s-decl
+			(p-ident (raw "result"))
+			(e-apply
+				(e-ident (raw "add_five"))
+				(e-int (raw "3"))))))
+~~~
+# CANONICALIZE
+~~~clojure
+(can-ir
+	(d-let
+		(p-assign (ident "x"))
+		(e-num (value "10")))
+	(d-let
+		(p-assign (ident "make_adder"))
+		(e-lambda
+			(args
+				(p-assign (ident "y")))
+			(e-closure
+				(captures
+					(capture (ident "y")))
+				(e-lambda
+					(args
+						(p-assign (ident "z")))
+					(e-dispatch-call (method "plus") (constraint-fn-var 67)
+						(receiver
+							(e-dispatch-call (method "plus") (constraint-fn-var 65)
+								(receiver
+									(e-lookup-local
+										(p-assign (ident "x"))))
+								(args
+									(e-lookup-local
+										(p-assign (ident "y"))))))
+						(args
+							(e-lookup-local
+								(p-assign (ident "z")))))))))
+	(d-let
+		(p-assign (ident "add_five"))
+		(e-call (constraint-fn-var 105)
+			(e-lookup-local
+				(p-assign (ident "make_adder")))
+			(e-num (value "5"))))
+	(d-let
+		(p-assign (ident "result"))
+		(e-call (constraint-fn-var 139)
+			(e-lookup-local
+				(p-assign (ident "add_five")))
+			(e-num (value "3")))))
+~~~
+# TYPES
+~~~clojure
+(inferred-types
+	(defs
+		(patt (type "Dec"))
+		(patt (type "Dec -> (Dec -> Dec)"))
+		(patt (type "Dec -> Dec"))
+		(patt (type "Dec")))
+	(expressions
+		(expr (type "Dec"))
+		(expr (type "Dec -> (Dec -> Dec)"))
+		(expr (type "Dec -> Dec"))
+		(expr (type "Dec"))))
+~~~

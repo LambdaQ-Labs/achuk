@@ -1,0 +1,641 @@
+//! Type generalization for Hindley-Milner type inference.
+//!
+//! This module implements the generalization phase of Hindley-Milner type inference,
+//! which determines which type variables can be made polymorphic (generalized).
+//!
+//! ## Generalization Overview
+//!
+//! In Hindley-Milner type systems, we use "ranks" to track the scope level where
+//! type variables are introduced. When we finish inferring a let-binding, we attempt
+//! to generalize its type - converting concrete type variables into polymorphic ones
+//! that can be instantiated differently at each use site.
+//!
+//! **Key insight:** Generalization is per-variable, not per-type. A type can be
+//! "partially generalized" where some variables are quantified while others remain
+//! as shared unification variables that escaped from outer scopes.
+//!
+//! ## Ranks
+//!
+//! - **Rank 0 (generalized):** Polymorphic type variables (post-generalization)
+//! - **Rank 1 (outermost):** Top-level definitions not being generalized (value restriction)
+//! - **Rank 2 (top_level):** Variables introduced at the outermost let-binding
+//! - **Rank 3+:** Variables introduced in nested let-bindings
+//!
+//! **Invariant:** After rank adjustment, all variables in a type being generalized
+//! at rank N have rank <= N. Variables with rank = N get generalized; variables
+//! with rank < N escaped and remain monomorphic (shared with outer scope).
+//!
+//! ## Example - Partial Generalization
+//!
+//! ```roc
+//! x = 10                    # x : α, rank 1, not generalized (value restriction)
+//!
+//! process = |y, _z| {       # rank 2
+//!   [x, y]                  # unifies α with y's type
+//! }
+//! ```
+//!
+//! When generalizing `process` at rank 2:
+//! - `y` unifies with `α` (from `x`), pulling `y` down to rank 1
+//! - `_z` stays at rank 2
+//! - Result: `process : ∀β. (α, β) -> List(α)` — only `_z` is generalized
+//!
+//! Later, `process(1.U8, "hello")` constrains the shared `α` to `U8`,
+//! which also constrains `x` to `U8`.
+//!
+//! ## Main entry point
+//! - `Generalizer.generalize()` - Generalize all variables at a given rank
+
+const std = @import("std");
+const Allocator = std.mem.Allocator;
+const builtin = @import("builtin");
+
+const TypesStore = @import("store.zig").Store;
+const Var = @import("types.zig").Var;
+const Content = @import("types.zig").Content;
+const Rank = @import("types.zig").Rank;
+
+/// Manages the generalization process for type variables.
+///
+/// The Generalizer is responsible for determining which type variables at a given
+/// rank can be safely generalized (made polymorphic) and which have "escaped" their
+/// scope by being referenced from outer scopes.
+///
+/// ## Main entry point
+/// - `Generalizer.generalize()` - Generalize all variables at a given rank
+pub const Generalizer = struct {
+    /// Borrowed reference to the type store
+    store: *TypesStore,
+    /// Tracks which variables we've already adjusted (for handling recursive types)
+    rank_adjusted_vars: std.AutoHashMap(Var, void),
+    /// Temporary pool for processing variables during rank adjustment
+    tmp_var_pool: VarPool,
+    /// Map of which variables we are generalizing this pass
+    vars_to_generalized: std.AutoHashMap(Var, void),
+
+    const Self = @This();
+
+    // general //
+
+    pub fn init(gpa: std.mem.Allocator, store: *TypesStore) std.mem.Allocator.Error!Self {
+        return .{
+            .store = store,
+            .tmp_var_pool = try VarPool.init(gpa),
+            .rank_adjusted_vars = std.AutoHashMap(Var, void).init(gpa),
+            .vars_to_generalized = std.AutoHashMap(Var, void).init(gpa),
+        };
+    }
+
+    /// Reset the state of the generalizer
+    pub fn reset(self: *Self) void {
+        self.tmp_var_pool.clearRetainingCapacity();
+        self.rank_adjusted_vars.clearRetainingCapacity();
+        self.vars_to_generalized.clearRetainingCapacity();
+    }
+
+    pub fn deinit(self: *Self, _: std.mem.Allocator) void {
+        self.tmp_var_pool.deinit();
+        self.rank_adjusted_vars.deinit();
+        self.vars_to_generalized.deinit();
+    }
+
+    /// Performs generalization for all variables at the given rank.
+    ///
+    /// This is the main entry point for the generalization algorithm. It processes all
+    /// type variables introduced at `rank_to_generalize` and determines which can be
+    /// generalized (made polymorphic) and which have escaped to outer scopes.
+    ///
+    /// ## Algorithm steps:
+    ///
+    /// 1. **Copy to temporary pool:** Move all vars at this rank into a temporary pool
+    ///    for processing, preserving their current ranks
+    ///
+    /// 2. **Adjust ranks:** Process vars from lowest to highest rank, adjusting each
+    ///    var's rank based on the ranks of variables it references. Variables that
+    ///    were unified with outer-scope variables will have their ranks lowered.
+    ///
+    /// 3. **Separate escaped from generalizable:** After rank adjustment, each variable
+    ///    originally at rank_to_generalize either:
+    ///    - Has rank < rank_to_generalize: "escaped" by referencing outer-scope vars
+    ///    - Has rank == rank_to_generalize: safe to generalize
+    ///
+    ///    Note: rank > rank_to_generalize should never occur and would indicate a bug.
+    ///
+    /// 4. **Update var pool:**
+    ///    - Move escaped vars to their (now lower) rank pools, where they remain
+    ///      as shared unification variables with outer scope
+    ///    - Set generalizable vars to rank .generalized
+    ///    - Clear the original rank pool
+    ///
+    /// ## Parameters
+    /// - `var_pool`: The main variable pool tracking all vars by rank
+    /// - `rank_to_generalize`: The rank level to generalize (must be var_pool.current_rank)
+    pub fn generalize(self: *Self, _: std.mem.Allocator, var_pool: *VarPool, rank_to_generalize: Rank) std.mem.Allocator.Error!void {
+        if (rank_to_generalize == Rank.generalized) return;
+
+        std.debug.assert(var_pool.current_rank == rank_to_generalize);
+        const rank_to_generalize_int = @intFromEnum(rank_to_generalize);
+
+        // Reset internal state from any previous generalization
+        self.reset();
+
+        // Prepare temporary pool to hold variables during processing
+        try self.tmp_var_pool.ensureRanksThrough(rank_to_generalize);
+        self.tmp_var_pool.current_rank = rank_to_generalize;
+
+        const vars_to_generalize = var_pool.getVarsForRank(rank_to_generalize);
+        try self.vars_to_generalized.ensureUnusedCapacity(@intCast(vars_to_generalize.len));
+
+        // Copy all variables at this rank into the temporary pool, resolving redirects
+        for (vars_to_generalize) |var_| {
+            const resolved = self.store.resolveVar(var_);
+            try self.tmp_var_pool.addVarToRank(resolved.var_, resolved.desc.rank);
+            // Only add to vars_to_generalized if not already generalized.
+            // A var that was already generalized in a previous pass should not be
+            // re-processed (which could incorrectly change its rank).
+            if (resolved.desc.rank != .generalized) {
+                try self.vars_to_generalized.put(resolved.var_, {});
+            }
+        }
+
+        // Adjust ranks to maintain invariant: ranks never increase going deeper.
+        // Process from lowest to highest rank so that lower ranks are finalized first,
+        // ensuring we have accurate rank information when processing higher ranks.
+        for (self.tmp_var_pool.slice(), 0..) |vars_at_rank, group_rank_int| {
+            const group_rank: Rank = @enumFromInt(group_rank_int);
+            for (vars_at_rank.items) |var_| {
+                _ = try self.adjustRank(var_, group_rank, vars_to_generalize);
+            }
+        }
+
+        // Move variables from lower ranks (generalized through rank_to_generalize-1) back to main pool.
+        // These are vars that were initially at rank_to_generalize but had their ranks
+        // lowered during adjustment because they reference outer-scope variables.
+        for (self.tmp_var_pool.sliceExceptCurrentRank()) |vars_at_rank| {
+            for (vars_at_rank.items) |var_| {
+                const resolved = self.store.resolveVar(var_);
+                if (resolved.is_root) {
+                    try var_pool.addVarToRank(resolved.var_, resolved.desc.rank);
+                }
+            }
+        }
+
+        // Process variables still at rank_to_generalize after adjustment.
+        // These either escaped (rank lowered) or can be generalized (rank unchanged).
+        for (self.tmp_var_pool.ranks.items[rank_to_generalize_int].items) |rank_var| {
+            const resolved = self.store.resolveVar(rank_var);
+            if (resolved.is_root) {
+                const resolved_rank_int = @intFromEnum(resolved.desc.rank);
+                // Adjustment only lowers ranks; a rank above the one being
+                // generalized means a reducer broke the invariant (see line ~122).
+                std.debug.assert(resolved_rank_int <= rank_to_generalize_int);
+                if (resolved_rank_int < rank_to_generalize_int) {
+                    // Escaped var, so move it to the right pool.
+                    try var_pool.addVarToRank(resolved.var_, resolved.desc.rank);
+                } else {
+                    // Safe to generalize
+                    try self.store.setDescRank(resolved.desc_idx, Rank.generalized);
+                }
+            }
+        }
+
+        // Clear the rank we just processed from the main pool
+        var_pool.ranks.items[rank_to_generalize_int].clearRetainingCapacity();
+    }
+    // adjust rank //
+
+    /// Adjusts type variable ranks to prepare for generalization.
+    ///
+    /// This implements the rank adjustment phase of Hindley-Milner
+    /// generalization. The key insight is that generalization is
+    /// **per-variable**, not per-type. A type can be "partially
+    /// generalized"—some variables are quantified while others remain as shared
+    /// unification variables that escaped from outer scopes.
+    ///
+    /// **Core Invariant:** Ranks never increase as you traverse deeper into a
+    /// type structure. This ensures we can identify which variables originated
+    /// from outer scopes.
+    ///
+    ///
+    /// ## Two classes of variables:
+    ///
+    /// 1. **Variables that can be generalized** (rank == rank being generalized):
+    ///    - Introduced at the current scope
+    ///    - Will be quantified during generalization
+    ///    - Each call site instantiates these with fresh variables
+    ///
+    /// 2. **Escaped variables** (rank < rank being generalized):
+    ///    - Introduced at an outer scope
+    ///    - NOT quantified. They remain as shared unification variables
+    ///    - All references share the same variable, enabling value restriction
+    ///
+    /// ## Example - Partial Generalization:
+    /// ```
+    /// x = 10               # x : α, rank 0, not generalized (value restriction)
+    ///
+    /// process = |y, _z| {  # rank 1
+    ///   [x, y]             # unifies α with y's type
+    /// }
+    /// ```
+    /// When generalizing `process` at rank 1:
+    /// - `y` unifies with `α` (from `x`), pulling `y` down to rank 0
+    /// - `_z` stays at rank 1
+    /// - Result: `process : ∀β. (α, β) -> List(α)`
+    /// - Only `_z` (as `β`) is generalized; `α` is shared with `x`
+    /// - The variable for the entire function type is marked as generalized
+    ///   because it contains at least one generalizable variable (`β`).
+    ///   During instantiation, the walk recurses into the function and only
+    ///   creates fresh copies only for variables that are themselves marked
+    ///   generalized.
+    ///
+    /// When instantiating `process`:
+    /// - `β` (was `_z`) → fresh variable
+    /// - `α` (was `y`/`x`) → left alone, still the original unification variable
+    ///
+    /// This means `process(1.U8, "hello")` constrains `x` to `U8`, and subsequent
+    /// calls must respect that constraint.
+    ///
+    /// ## Recursion handling:
+    /// - `rank_adjusted_vars` tracks variables we've already processed to handle cycles
+    /// - For recursive types like `type List a = [Nil, Cons a (List a)]`, we mark the
+    ///   variable as "seen" immediately before recursing, preventing infinite loops
+    fn adjustRank(self: *Self, var_: Var, group_rank: Rank, vars_to_generalize: []Var) std.mem.Allocator.Error!Rank {
+        const resolved = self.store.resolveVar(var_);
+
+        // Check if this variable is one we're trying to generalize at this rank
+        const is_var_to_generalize = self.vars_to_generalized.contains(resolved.var_);
+
+        // Early return for already-processed vars to handle recursive types
+        if (is_var_to_generalize and self.rank_adjusted_vars.contains(resolved.var_)) {
+            return resolved.desc.rank;
+        }
+
+        // Calculate the new rank based on whether we're generalizing this var
+        const new_rank = if (is_var_to_generalize) blk: {
+            // Mark as seen before recursing to handle cycles
+            try self.rank_adjusted_vars.put(resolved.var_, {});
+
+            // For vars being generalized: rank INCREASES to max of nested vars
+            // This allows us to detect when a variable "escapes" by referencing
+            // variables from outer scopes (lower ranks)
+            break :blk try self.adjustRankContent(resolved.desc.content, group_rank, vars_to_generalize);
+        } else blk: {
+            // For other vars: rank can only DECREASE (maintain invariant)
+            // This ensures that if an outer type references an inner variable,
+            // the outer type's rank is lowered to match
+            break :blk resolved.desc.rank.min(group_rank);
+        };
+
+        try self.store.setDescRank(resolved.desc_idx, new_rank);
+        return new_rank;
+    }
+
+    /// Rank reduction shared by applied containers (aliases, nominal types,
+    /// tuples): the container contributes nothing itself, so its rank is the
+    /// max over its args. Seed at `generalized` (the max-identity) and let the
+    /// args raise it — seeding at `outermost` would floor the result there even
+    /// when every arg is already generalized, wrongly blocking generalization of
+    /// the type that uses the container. No args means a ground type, which sits
+    /// at `outermost`.
+    fn adjustRankOverArgs(self: *Self, args_iter: Var.SafeList.Iterator, group_rank: Rank, vars_to_generalize: []Var) std.mem.Allocator.Error!Rank {
+        var iter = args_iter;
+        if (iter.count() == 0) return Rank.outermost;
+        var next_rank = Rank.generalized;
+        while (iter.next()) |arg_var| {
+            next_rank = next_rank.max(try self.adjustRank(arg_var, group_rank, vars_to_generalize));
+        }
+        return next_rank;
+    }
+
+    fn adjustRankContent(self: *Self, content: Content, group_rank: Rank, vars_to_generalize: []Var) std.mem.Allocator.Error!Rank {
+        return switch (content) {
+            .flex => {
+                // Here, we start at group_rank (since flex should be generalized),
+                // then we recurse into the constraints.
+                const next_rank = group_rank;
+                // for (self.store.sliceStaticDispatchConstraints(flex.constraints)) |constraint| {
+                //     next_rank = next_rank.max(try self.adjustRank(constraint.fn_var, group_rank, vars_to_generalize));
+                // }
+                return next_rank;
+            },
+            .rigid => {
+                // Here, we start at group_rank (since rigid should be generalized),
+                // then we recurse into the constraints.
+                const next_rank = group_rank;
+                // for (self.store.sliceStaticDispatchConstraints(rigid.constraints)) |constraint| {
+                //     next_rank = next_rank.max(try self.adjustRank(constraint.fn_var, group_rank, vars_to_generalize));
+                // }
+                return next_rank;
+            },
+            .alias => |alias| {
+                // THEORY: we don't need to recurse into the backing type. Everything
+                // in the alias RHS is either a reference to an arg (already visited
+                // via the args below) or a concrete type (which resolves to
+                // `outermost` on its own, so it can't raise the rank). Traversing the
+                // backing var would therefore be redundant — the rank is just the max
+                // over the args.
+                return self.adjustRankOverArgs(self.store.iterAliasArgs(alias), group_rank, vars_to_generalize);
+            },
+            .structure => |flat_type| {
+                switch (flat_type) {
+                    .empty_record, .empty_tag_union => {
+                        // THEORY: Empty records/tag unions never need to be generalized
+                        return .outermost;
+                    },
+                    .tuple => |tuple| {
+                        return self.adjustRankOverArgs(self.store.iterVars(tuple.elems), group_rank, vars_to_generalize);
+                    },
+                    .nominal_type => |nominal| {
+                        // Same as .alias: don't recurse into the backing type, take
+                        // the max over the args.
+                        return self.adjustRankOverArgs(self.store.iterNominalArgs(nominal), group_rank, vars_to_generalize);
+                    },
+                    .fn_pure => |func| {
+                        var next_rank = try self.adjustRank(func.ret, group_rank, vars_to_generalize);
+                        for (self.store.sliceVars(func.args)) |arg_var| {
+                            next_rank = next_rank.max(try self.adjustRank(arg_var, group_rank, vars_to_generalize));
+                        }
+                        return next_rank;
+                    },
+                    .fn_effectful => |func| {
+                        var next_rank = try self.adjustRank(func.ret, group_rank, vars_to_generalize);
+                        for (self.store.sliceVars(func.args)) |arg_var| {
+                            next_rank = next_rank.max(try self.adjustRank(arg_var, group_rank, vars_to_generalize));
+                        }
+                        return next_rank;
+                    },
+                    .fn_unbound => |func| {
+                        var next_rank = try self.adjustRank(func.ret, group_rank, vars_to_generalize);
+                        for (self.store.sliceVars(func.args)) |arg_var| {
+                            next_rank = next_rank.max(try self.adjustRank(arg_var, group_rank, vars_to_generalize));
+                        }
+                        return next_rank;
+                    },
+                    .record => |record| {
+                        var next_rank = try self.adjustRank(record.ext, group_rank, vars_to_generalize);
+                        for (self.store.getRecordFieldsSlice(record.fields).items(.var_)) |rec_var| {
+                            next_rank = next_rank.max(try self.adjustRank(rec_var, group_rank, vars_to_generalize));
+                        }
+                        return next_rank;
+                    },
+                    .record_unbound => |record_fields| {
+                        var next_rank = blk: {
+                            // Unbounds are special-cased: An unbound represents a
+                            // flex var _at the same rank_ as the unbound record. So,
+                            // if we actually had that, it would recurse and unwrap
+                            // to group_rank. So we just return that directly here.
+                            break :blk group_rank;
+                        };
+                        for (self.store.getRecordFieldsSlice(record_fields).items(.var_)) |rec_var| {
+                            next_rank = next_rank.max(try self.adjustRank(rec_var, group_rank, vars_to_generalize));
+                        }
+                        return next_rank;
+                    },
+                    .tag_union => |tag_union| {
+                        var next_rank = try self.adjustRank(tag_union.ext, group_rank, vars_to_generalize);
+                        for (self.store.getTagsSlice(tag_union.tags).items(.args)) |arg_range| {
+                            for (self.store.sliceVars(arg_range)) |tag_arg_var| {
+                                next_rank = next_rank.max(try self.adjustRank(tag_arg_var, group_rank, vars_to_generalize));
+                            }
+                        }
+                        return next_rank;
+                    },
+                }
+            },
+            .err => return group_rank,
+        };
+    }
+};
+
+const VarArrayList = std.array_list.Managed(Var);
+
+/// A pool of variables grouped by rank, use to manage & generalize variables
+/// introduced during unification
+pub const VarPool = struct {
+    const Self = @This();
+
+    ranks: std.array_list.Managed(VarArrayList),
+    current_rank: Rank,
+    allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator) std.mem.Allocator.Error!Self {
+        var ranks = try std.array_list.Managed(VarArrayList).initCapacity(allocator, 16);
+        for (0..16) |_| {
+            ranks.appendAssumeCapacity(try VarArrayList.initCapacity(allocator, 16));
+        }
+        return Self{
+            .ranks = ranks,
+            .current_rank = Rank.generalized,
+            .allocator = allocator,
+        };
+    }
+
+    pub fn deinit(self: *Self) void {
+        for (self.ranks.items) |*rank| {
+            rank.deinit();
+        }
+        self.ranks.deinit();
+    }
+
+    // Reset the var pool
+    pub fn clearRetainingCapacity(self: *Self) void {
+        for (self.ranks.items) |*rank| {
+            rank.clearRetainingCapacity();
+        }
+        self.current_rank = Rank.generalized;
+    }
+
+    // Ensure the var pool has ranks up to and including `next_rank`
+    pub fn ensureRanksThrough(self: *Self, next_rank: Rank) std.mem.Allocator.Error!void {
+        const required_len = @intFromEnum(next_rank) + 1;
+        while (self.ranks.items.len < required_len) {
+            try self.ranks.append(try VarArrayList.initCapacity(self.allocator, 16));
+        }
+    }
+
+    // Get a slice of ranks, up to and including the current rank
+    pub fn slice(self: *Self) []const VarArrayList {
+        return self.ranks.items[0 .. @intFromEnum(self.current_rank) + 1];
+    }
+
+    // Get a slice of ranks, up to, but not including, the current rank
+    pub fn sliceExceptCurrentRank(self: *Self) []const VarArrayList {
+        return self.ranks.items[0..@intFromEnum(self.current_rank)];
+    }
+
+    pub fn pushRank(self: *Self) std.mem.Allocator.Error!void {
+        self.current_rank = self.current_rank.next();
+        if (@intFromEnum(self.current_rank) >= self.ranks.items.len) {
+            try self.ranks.append(try VarArrayList.initCapacity(self.allocator, 16));
+        }
+    }
+
+    pub fn popRank(self: *Self) void {
+        if (@intFromEnum(self.current_rank) > 0) {
+            self.ranks.items[@intFromEnum(self.current_rank)].clearRetainingCapacity();
+            self.current_rank = self.current_rank.prev();
+        }
+    }
+
+    /// Merge another VarPool's vars into this one, rank by rank.
+    /// Both pools must be at the same current_rank.
+    pub fn mergeFrom(self: *Self, other: *const VarPool) std.mem.Allocator.Error!void {
+        std.debug.assert(self.current_rank == other.current_rank);
+        const upper = @intFromEnum(self.current_rank) + 1;
+        for (0..upper) |rank_idx| {
+            try self.ranks.items[rank_idx].appendSlice(other.ranks.items[rank_idx].items);
+        }
+    }
+
+    pub fn addVarToRank(self: *Self, variable: Var, rank: Rank) Allocator.Error!void {
+        if (builtin.mode == .Debug) {
+            if (@intFromEnum(rank) > @intFromEnum(self.current_rank)) {
+                std.debug.panic("trying to add var at rank {}, but current rank is {}", .{ @intFromEnum(rank), @intFromEnum(self.current_rank) });
+            }
+        }
+        try self.ranks.items[@intFromEnum(rank)].append(variable);
+    }
+
+    pub fn addVarsToRank(self: *Self, variables: []Var, rank: Rank) Allocator.Error!void {
+        if (builtin.mode == .Debug) {
+            if (@intFromEnum(rank) > @intFromEnum(self.current_rank)) {
+                std.debug.panic("trying to add var at rank {}, but current rank is {}", .{ @intFromEnum(rank), @intFromEnum(self.current_rank) });
+            }
+        }
+        try self.ranks.items[@intFromEnum(rank)].appendSlice(variables);
+    }
+
+    /// Shrink the vars recorded for `rank` back to `new_len`, discarding
+    /// entries appended after a speculative probe captured the length —
+    /// the rollback counterpart to the `addVarToRank` calls the probe made.
+    pub fn shrinkRank(self: *Self, rank: Rank, new_len: usize) void {
+        std.debug.assert(@intFromEnum(rank) <= @intFromEnum(self.current_rank));
+        std.debug.assert(new_len <= self.ranks.items[@intFromEnum(rank)].items.len);
+        self.ranks.items[@intFromEnum(rank)].shrinkRetainingCapacity(new_len);
+    }
+
+    pub fn getVarsForRank(self: *Self, rank: Rank) []Var {
+        if (builtin.mode == .Debug) {
+            if (@intFromEnum(rank) > @intFromEnum(self.current_rank)) {
+                std.debug.panic("trying to get vars at rank {}, but current rank is {}", .{ @intFromEnum(rank), @intFromEnum(self.current_rank) });
+            }
+        }
+        return self.ranks.items[@intFromEnum(rank)].items;
+    }
+};
+
+// helpers for tests //
+
+fn mkVar(n: u32) Var {
+    return @enumFromInt(n);
+}
+
+fn expectVarsEqual(actual: []Var, expected: []const Var) error{TestExpectedEqual}!void {
+    try std.testing.expectEqual(expected.len, actual.len);
+    for (expected, actual) |e, a| {
+        try std.testing.expectEqual(e, a);
+    }
+}
+
+// tests //
+
+test "mergeFrom - merge empty into empty" {
+    const gpa = std.testing.allocator;
+    var pool_a = try VarPool.init(gpa);
+    defer pool_a.deinit();
+    var pool_b = try VarPool.init(gpa);
+    defer pool_b.deinit();
+
+    try pool_a.mergeFrom(&pool_b);
+
+    try std.testing.expectEqual(Rank.generalized, pool_a.current_rank);
+}
+
+test "mergeFrom - merge non-empty into empty" {
+    const gpa = std.testing.allocator;
+    var pool_a = try VarPool.init(gpa);
+    defer pool_a.deinit();
+    var pool_b = try VarPool.init(gpa);
+    defer pool_b.deinit();
+
+    // Both pools at rank 2
+    try pool_a.pushRank(); // rank 1
+    try pool_a.pushRank(); // rank 2
+    try pool_b.pushRank(); // rank 1
+    try pool_b.pushRank(); // rank 2
+
+    try pool_b.addVarToRank(mkVar(10), .outermost);
+    try pool_b.addVarToRank(mkVar(20), @enumFromInt(2));
+    try pool_b.addVarToRank(mkVar(21), @enumFromInt(2));
+
+    try pool_a.mergeFrom(&pool_b);
+
+    try expectVarsEqual(pool_a.getVarsForRank(.outermost), &.{mkVar(10)});
+    try expectVarsEqual(pool_a.getVarsForRank(@enumFromInt(2)), &.{ mkVar(20), mkVar(21) });
+}
+
+test "mergeFrom - merge empty into non-empty" {
+    const gpa = std.testing.allocator;
+    var pool_a = try VarPool.init(gpa);
+    defer pool_a.deinit();
+    var pool_b = try VarPool.init(gpa);
+    defer pool_b.deinit();
+
+    // Both pools at rank 1
+    try pool_a.pushRank();
+    try pool_b.pushRank();
+
+    try pool_a.addVarToRank(mkVar(5), .outermost);
+
+    try pool_a.mergeFrom(&pool_b);
+
+    try expectVarsEqual(pool_a.getVarsForRank(.outermost), &.{mkVar(5)});
+}
+
+test "mergeFrom - combines vars at same rank" {
+    const gpa = std.testing.allocator;
+    var pool_a = try VarPool.init(gpa);
+    defer pool_a.deinit();
+    var pool_b = try VarPool.init(gpa);
+    defer pool_b.deinit();
+
+    // Both pools at rank 1
+    try pool_a.pushRank();
+    try pool_a.addVarToRank(mkVar(1), .outermost);
+    try pool_a.addVarToRank(mkVar(2), .outermost);
+
+    try pool_b.pushRank();
+    try pool_b.addVarToRank(mkVar(10), .outermost);
+    try pool_b.addVarToRank(mkVar(11), .outermost);
+
+    try pool_a.mergeFrom(&pool_b);
+
+    try expectVarsEqual(pool_a.getVarsForRank(.outermost), &.{ mkVar(1), mkVar(2), mkVar(10), mkVar(11) });
+}
+
+test "mergeFrom - vars at multiple ranks" {
+    const gpa = std.testing.allocator;
+    var pool_a = try VarPool.init(gpa);
+    defer pool_a.deinit();
+    var pool_b = try VarPool.init(gpa);
+    defer pool_b.deinit();
+
+    // Both pools at rank 3
+    try pool_a.pushRank(); // 1
+    try pool_a.pushRank(); // 2
+    try pool_a.pushRank(); // 3
+    try pool_a.addVarToRank(mkVar(1), .outermost);
+    try pool_a.addVarToRank(mkVar(30), @enumFromInt(3));
+
+    try pool_b.pushRank(); // 1
+    try pool_b.pushRank(); // 2
+    try pool_b.pushRank(); // 3
+    try pool_b.addVarToRank(mkVar(10), .outermost);
+    try pool_b.addVarToRank(mkVar(20), @enumFromInt(2));
+
+    try pool_a.mergeFrom(&pool_b);
+
+    try expectVarsEqual(pool_a.getVarsForRank(.outermost), &.{ mkVar(1), mkVar(10) });
+    try expectVarsEqual(pool_a.getVarsForRank(@enumFromInt(2)), &.{mkVar(20)});
+    try expectVarsEqual(pool_a.getVarsForRank(@enumFromInt(3)), &.{mkVar(30)});
+}

@@ -1,0 +1,819 @@
+//! Any text in a Roc source file that has significant content.
+//!
+//! During tokenization, all variable names, record field names, type names, etc. are interned
+//! into a deduplicated collection, the [Ident.Store]. On interning, each Ident gets a unique ID
+//! that represents that string, which can be used to look up the string value in the [Ident.Store]
+//! in constant time. Storing IDs in each IR instead of strings also uses less memory in the IRs.
+
+const std = @import("std");
+const Allocator = std.mem.Allocator;
+const builtin = @import("builtin");
+
+const collections = @import("collections");
+
+const SmallStringInterner = @import("SmallStringInterner.zig");
+
+const CompactWriter = collections.CompactWriter;
+
+const Ident = @This();
+
+/// Whether to enable debug store tracking. This adds a Debug-only check that
+/// verifies Idx values are only looked up in the store that created them.
+const enable_store_tracking = builtin.mode == .Debug;
+
+/// Method name for addition - used by + operator desugaring
+pub const PLUS_METHOD_NAME = "plus";
+/// Method name for negation - used by unary - operator desugaring
+pub const NEGATE_METHOD_NAME = "negate";
+
+/// Compare two identifier texts exactly.
+pub fn textEql(a: []const u8, b: []const u8) bool {
+    return std.mem.eql(u8, a, b);
+}
+
+/// Compare two identifier texts in deterministic lexicographic order.
+pub fn textLessThan(a: []const u8, b: []const u8) bool {
+    return std.mem.lessThan(u8, a, b);
+}
+
+/// Check whether identifier text starts with a fixed prefix.
+pub fn textStartsWith(text: []const u8, prefix: []const u8) bool {
+    return std.mem.startsWith(u8, text, prefix);
+}
+
+/// Check whether identifier text ends with a fixed suffix.
+pub fn textEndsWith(text: []const u8, suffix: []const u8) bool {
+    return std.mem.endsWith(u8, text, suffix);
+}
+
+/// The original text of the identifier.
+raw_text: []const u8,
+
+/// Attributes of the identifier such as if it is effectful, ignored, or reassignable.
+attributes: Attributes,
+
+/// Create a new identifier from a string.
+pub fn for_text(text: []const u8) Ident {
+    return Ident{
+        .raw_text = text,
+        .attributes = Attributes.fromString(text),
+    };
+}
+
+/// Errors that can occur when creating an identifier from text.
+pub const Error = error{
+    /// The identifier text is empty.
+    EmptyText,
+    /// The identifier text contains null bytes.
+    ContainsNullByte,
+    /// The identifier text contains control characters that could cause issues.
+    ContainsControlCharacters,
+};
+
+/// Create a new identifier from a byte slice with validation.
+/// Returns an error if the bytes are malformed or the Ident is invalid.
+pub fn from_bytes(bytes: []const u8) Error!Ident {
+    // Validate the bytes
+    if (bytes.len == 0) {
+        return Error.EmptyText;
+    }
+
+    // Check for null bytes (causes crashes in string interner)
+    if (std.mem.findScalar(u8, bytes, 0) != null) {
+        return Error.ContainsNullByte;
+    }
+
+    // Check for other problematic control characters including space, tab, newline, and carriage return
+    for (bytes) |byte| {
+        if (byte < 32 or byte == ' ' or byte == '\t' or byte == '\n' or byte == '\r') {
+            return Error.ContainsControlCharacters;
+        }
+    }
+
+    return Ident{
+        .raw_text = bytes,
+        .attributes = Attributes.fromString(bytes),
+    };
+}
+
+/// The index from the store, with the attributes packed into unused bytes.
+///
+/// With 29-bits for the ID we can store up to 536,870,912 identifiers.
+pub const Idx = packed struct(u32) {
+    attributes: Attributes,
+    idx: u29,
+
+    /// Sentinel value representing no/unset ident
+    pub const NONE: Idx = .{ .attributes = .{ .effectful = true, .ignored = true, .reassignable = true }, .idx = std.math.maxInt(u29) };
+
+    pub fn eql(self: Idx, other: Idx) bool {
+        if (comptime builtin.mode == .Debug) {
+            if (self.idx == other.idx) {
+                std.debug.assert(@as(u3, @bitCast(self.attributes)) == @as(u3, @bitCast(other.attributes)));
+            }
+        }
+        return @as(u32, @bitCast(self)) == @as(u32, @bitCast(other));
+    }
+
+    pub fn isNone(self: Idx) bool {
+        return self.eql(NONE);
+    }
+
+    /// Custom formatter for std.fmt - allows printing with `{}`
+    pub fn format(
+        self: Idx,
+        comptime _: []const u8,
+        _: std.fmt.FormatOptions,
+        writer: anytype,
+    ) Allocator.Error!void {
+        // Extract from packed struct to avoid formatting issues
+        const idx_val: u32 = @intCast(self.idx);
+        try writer.print("Ident({?})", .{idx_val});
+    }
+};
+
+/// Identifier attributes such as if it is effectful, ignored, or reassignable.
+pub const Attributes = packed struct(u3) {
+    effectful: bool,
+    ignored: bool,
+    reassignable: bool,
+
+    pub fn fromString(text: []const u8) Attributes {
+        return .{
+            .effectful = std.mem.endsWith(u8, text, "!"),
+            .ignored = std.mem.startsWith(u8, text, "_"),
+            .reassignable = std.mem.startsWith(u8, text, "$"),
+        };
+    }
+};
+
+/// An interner for identifier names.
+pub const Store = struct {
+    interner: SmallStringInterner,
+    attributes: collections.SafeList(Attributes) = .{},
+    next_unique_name: u32 = 0,
+
+    /// Debug-only: verify `idx` was produced by this store. An Idx is a byte
+    /// offset into this store's interner, so an Idx from a different store points
+    /// outside this interner's data and is caught by the bounds check.
+    fn verifyIdx(self: *const Store, idx: Idx) void {
+        if (enable_store_tracking) {
+            if (!self.interner.isInBounds(@enumFromInt(@as(u32, idx.idx)))) {
+                std.debug.panic(
+                    "Ident.Idx lookup in wrong store: offset {d} is not a valid " ++
+                        "entry in this interner. It was created by a different store.",
+                    .{idx.idx},
+                );
+            }
+        }
+    }
+
+    /// Serialized representation of an Ident.Store
+    /// Uses extern struct to guarantee consistent field layout across optimization levels.
+    pub const Serialized = extern struct {
+        interner: SmallStringInterner.Serialized,
+        attributes: collections.SafeList(Attributes).Serialized,
+        next_unique_name: u32,
+
+        /// Serialize a Store into this Serialized struct, appending data to the writer
+        pub fn serialize(
+            self: *Serialized,
+            store: *const Store,
+            allocator: std.mem.Allocator,
+            writer: *CompactWriter,
+        ) std.mem.Allocator.Error!void {
+            try self.interner.serialize(&store.interner, allocator, writer);
+            try self.attributes.serialize(&store.attributes, allocator, writer);
+            self.next_unique_name = store.next_unique_name;
+        }
+
+        /// Deserialize into a Store value (no in-place modification of cache buffer).
+        /// The base parameter is the base address of the serialized buffer in memory.
+        pub fn deserializeInto(self: *const Serialized, base: usize) Store {
+            return Store{
+                .interner = self.interner.deserializeInto(base),
+                .attributes = self.attributes.deserializeInto(base),
+                .next_unique_name = self.next_unique_name,
+            };
+            // Note: We don't register deserialized stores for debug tracking.
+            // This is fine because the debug tracking is meant to catch bugs during fresh compilation.
+        }
+    };
+
+    /// Initialize the memory for an `Ident.Store` with a specific capacity.
+    pub fn initCapacity(gpa: std.mem.Allocator, capacity: usize) std.mem.Allocator.Error!Store {
+        return .{
+            .interner = try SmallStringInterner.initCapacity(gpa, capacity),
+        };
+    }
+
+    /// Deinitialize the memory for an `Ident.Store`.
+    pub fn deinit(self: *Store, gpa: std.mem.Allocator) void {
+        self.interner.deinit(gpa);
+        self.attributes.deinit(gpa);
+    }
+
+    /// Clone this store into fresh owned memory.
+    pub fn clone(self: *const Store, gpa: std.mem.Allocator) std.mem.Allocator.Error!Store {
+        return .{
+            .interner = try self.interner.clone(gpa),
+            .attributes = try self.attributes.clone(gpa),
+            .next_unique_name = self.next_unique_name,
+        };
+    }
+
+    /// Insert a new identifier into the store.
+    pub fn insert(self: *Store, gpa: std.mem.Allocator, ident: Ident) std.mem.Allocator.Error!Idx {
+        const idx = try self.interner.insert(gpa, ident.raw_text);
+
+        const result = Idx{
+            .attributes = ident.attributes,
+            .idx = @as(u29, @intCast(@intFromEnum(idx))),
+        };
+
+        return result;
+    }
+
+    /// Enable inserts on a deserialized store by copying its interner data into
+    /// growable allocations owned by the provided allocator.
+    pub fn enableRuntimeInserts(self: *Store, gpa: std.mem.Allocator) std.mem.Allocator.Error!void {
+        try self.interner.enableRuntimeInserts(gpa);
+    }
+
+    /// Look up an identifier in the store without inserting.
+    /// Returns the index if found, null if not found.
+    /// Unlike insert, this never modifies the store (no resize, no insertion).
+    /// Useful for deserialized stores that cannot be grown.
+    pub fn lookup(self: *const Store, ident: Ident) ?Idx {
+        const idx = self.interner.lookup(ident.raw_text) orelse return null;
+
+        return Idx{
+            .attributes = ident.attributes,
+            .idx = @as(u29, @intCast(@intFromEnum(idx))),
+        };
+    }
+
+    /// Generate a new identifier that is unique within this module.
+    ///
+    /// We keep a counter per `Ident.Store` that gets incremented each
+    /// time this method is called. The new ident is named based on said
+    /// counter, which cannot overlap with user-defined idents since those
+    /// cannot start with a digit.
+    pub fn genUnique(self: *Store, gpa: std.mem.Allocator) std.mem.Allocator.Error!Idx {
+        var id = self.next_unique_name;
+        self.next_unique_name += 1;
+
+        // Manually render the text into a buffer to avoid allocating
+        // a string, as the string interner will copy the text anyway.
+
+        var digit_index: u8 = 9;
+        // The max u32 value is 4294967295 which is 10 digits
+        var str_buffer = [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+        // Special case for 0
+        if (id == 0) {
+            str_buffer[digit_index] = '0';
+            digit_index -= 1;
+        } else {
+            while (id > 0) {
+                const digit = id % 10;
+                str_buffer[digit_index] = @as(u8, @intCast(digit)) + '0';
+
+                id = (id - digit) / 10;
+                digit_index -= 1;
+            }
+        }
+
+        const name = str_buffer[digit_index + 1 ..];
+
+        const idx = try self.interner.insert(gpa, name);
+
+        const attributes = Attributes{
+            .effectful = false,
+            .ignored = false,
+            .reassignable = false,
+        };
+
+        const expected_idx = self.attributes.items.items.len;
+        const attributes_idx = try self.attributes.append(gpa, attributes);
+        if (comptime builtin.mode == .Debug) {
+            std.debug.assert(@intFromEnum(attributes_idx) == expected_idx);
+        } else if (@intFromEnum(attributes_idx) != expected_idx) {
+            unreachable;
+        }
+
+        const result = Idx{
+            .attributes = attributes,
+            .idx = @truncate(@intFromEnum(idx)),
+        };
+
+        return result;
+    }
+
+    /// Get the text for an identifier.
+    pub fn getText(self: *const Store, idx: Idx) []u8 {
+        self.verifyIdx(idx);
+        return self.interner.getText(@enumFromInt(@as(u32, idx.idx)));
+    }
+
+    /// Compare the texts behind two identifiers from this store.
+    pub fn idxTextEql(self: *const Store, a: Idx, b: Idx) bool {
+        return textEql(self.getText(a), self.getText(b));
+    }
+
+    /// Compare the texts behind two identifiers from this store.
+    pub fn idxTextLessThan(self: *const Store, a: Idx, b: Idx) bool {
+        return textLessThan(self.getText(a), self.getText(b));
+    }
+
+    /// Check if an identifier text already exists in the store.
+    pub fn contains(self: *const Store, text: []const u8) bool {
+        return self.interner.contains(text);
+    }
+
+    /// Find an identifier by its string, returning its index if it exists.
+    /// This is different from insert in that it's guaranteed not to modify the store.
+    pub fn findByString(self: *const Store, text: []const u8) ?Idx {
+        // Look up in the interner without inserting
+        const result = self.interner.findStringOrSlot(text);
+        const interner_idx = result.idx orelse return null;
+
+        // Create an Idx with inferred attributes from the text
+        return Idx{
+            .attributes = Attributes.fromString(text),
+            .idx = @as(u29, @intCast(@intFromEnum(interner_idx))),
+        };
+    }
+
+    /// Return the already-interned Builtin module identifier.
+    pub fn builtinModuleIdent(self: *const Store) Idx {
+        return self.findByString("Builtin") orelse unreachable;
+    }
+
+    /// Return the already-interned Builtin.Num.Dec type identifier.
+    pub fn builtinDecTypeIdent(self: *const Store) Idx {
+        return self.findByString("Builtin.Num.Dec") orelse unreachable;
+    }
+
+    /// Return the already-interned Builtin.Str type identifier.
+    pub fn builtinStrTypeIdent(self: *const Store) Idx {
+        return self.findByString("Builtin.Str") orelse unreachable;
+    }
+
+    /// Calculate the size needed to serialize this Ident.Store
+    pub fn serializedSize(self: *const Store) usize {
+        var size: usize = 0;
+
+        // SmallStringInterner components
+        size += @sizeOf(u32); // bytes_len
+        size += self.interner.bytes.len(); // bytes data
+        size = std.mem.alignForward(usize, size, @alignOf(u32)); // align for next u32
+
+        size += @sizeOf(u32); // next_unique_name
+
+        // Align to SERIALIZATION_ALIGNMENT to maintain alignment for subsequent data
+        return std.mem.alignForward(usize, size, collections.SERIALIZATION_ALIGNMENT.toByteUnits());
+    }
+
+    /// Serialize this Store to the given CompactWriter. The resulting Store
+    /// in the writer's buffer will have offsets instead of pointers. Calling any
+    /// methods on it or dereferencing its internal "pointers" (which are now
+    /// offsets) is illegal behavior!
+    pub fn serialize(
+        self: *const Store,
+        allocator: std.mem.Allocator,
+        writer: *collections.CompactWriter,
+    ) std.mem.Allocator.Error!*const Store {
+        // First, write the Store struct itself
+        const offset_self = try writer.appendAlloc(allocator, Store);
+
+        // Then serialize the sub-structures and update the struct
+        offset_self.* = .{
+            .interner = (try self.interner.serialize(allocator, writer)).*,
+            .attributes = (try self.attributes.serialize(allocator, writer)).*,
+            .next_unique_name = self.next_unique_name,
+        };
+
+        return @constCast(offset_self);
+    }
+
+    /// Add the given offset to the memory addresses of all pointers in `self`.
+    pub fn relocate(self: *Store, offset: isize) void {
+        self.interner.relocate(offset);
+        self.attributes.relocate(offset);
+    }
+};
+
+test "from_bytes validates empty text" {
+    const result = Ident.from_bytes("");
+    try std.testing.expectError(Ident.Error.EmptyText, result);
+}
+
+test "from_bytes validates null bytes" {
+    const text_with_null = "hello\x00world";
+    const result = Ident.from_bytes(text_with_null);
+    try std.testing.expectError(Ident.Error.ContainsNullByte, result);
+}
+
+test "from_bytes validates control characters" {
+    const text_with_control = "hello\x01world";
+    const result = Ident.from_bytes(text_with_control);
+    try std.testing.expectError(Ident.Error.ContainsControlCharacters, result);
+}
+
+test "from_bytes disallows common whitespace" {
+    const text_with_space = "hello world";
+    const result = Ident.from_bytes(text_with_space);
+    try std.testing.expect(result == Ident.Error.ContainsControlCharacters);
+
+    const text_with_tab = "hello\tworld";
+    const result2 = Ident.from_bytes(text_with_tab);
+    try std.testing.expect(result2 == Ident.Error.ContainsControlCharacters);
+
+    const text_with_newline = "hello\nworld";
+    const result3 = Ident.from_bytes(text_with_newline);
+    try std.testing.expect(result3 == Ident.Error.ContainsControlCharacters);
+
+    const text_with_cr = "hello\rworld";
+    const result4 = Ident.from_bytes(text_with_cr);
+    try std.testing.expect(result4 == Ident.Error.ContainsControlCharacters);
+}
+
+test "from_bytes creates valid identifier" {
+    const result = try Ident.from_bytes("valid_name!");
+    try std.testing.expectEqualStrings("valid_name!", result.raw_text);
+    try std.testing.expect(result.attributes.effectful == true);
+    try std.testing.expect(result.attributes.ignored == false);
+    try std.testing.expect(result.attributes.reassignable == false);
+}
+
+test "from_bytes creates ignored identifier" {
+    const result = try Ident.from_bytes("_ignored");
+    try std.testing.expectEqualStrings("_ignored", result.raw_text);
+    try std.testing.expect(result.attributes.effectful == false);
+    try std.testing.expect(result.attributes.ignored == true);
+    try std.testing.expect(result.attributes.reassignable == false);
+}
+
+test "from_bytes creates reassignable identifier" {
+    const result = try Ident.from_bytes("$reusable");
+    try std.testing.expectEqualStrings("$reusable", result.raw_text);
+    try std.testing.expect(result.attributes.effectful == false);
+    try std.testing.expect(result.attributes.ignored == false);
+    try std.testing.expect(result.attributes.reassignable == true);
+}
+
+test "Ident.Store empty CompactWriter roundtrip" {
+    const gpa = std.testing.allocator;
+
+    // Create an empty Store
+    var original = try Ident.Store.initCapacity(gpa, 0);
+    defer original.deinit(gpa);
+
+    // Create a temp file
+    var tmp_dir = std.testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
+
+    const io = std.testing.io;
+    const file = try tmp_dir.dir.createFile(io, "test_empty_store.dat", .{ .read = true });
+    defer file.close(io);
+
+    // Serialize using CompactWriter with arena allocator
+    var arena = collections.SingleThreadArena.init(gpa);
+    defer arena.deinit();
+    const arena_allocator = arena.allocator();
+
+    var writer = CompactWriter.init();
+    defer writer.deinit(arena_allocator);
+
+    const serialized = try original.serialize(arena_allocator, &writer);
+    try std.testing.expect(@intFromPtr(serialized) != 0);
+
+    // Write to file
+    try writer.writeGather(file, io);
+
+    // Read back
+    const file_size = writer.total_bytes;
+
+    const buffer = try gpa.alignedAlloc(u8, std.mem.Alignment.@"16", file_size);
+    defer gpa.free(buffer);
+
+    _ = try file.readPositionalAll(io, buffer, 0);
+    const bytes_read = file_size;
+    try std.testing.expectEqual(writer.total_bytes, bytes_read);
+
+    // Cast and relocate
+    // The Store struct should be at the beginning (it was appended first)
+    const deserialized = @as(*Ident.Store, @ptrCast(@alignCast(buffer.ptr)));
+
+    deserialized.relocate(@as(isize, @intCast(@intFromPtr(buffer.ptr))));
+
+    // Verify empty - interner always has at least 1 byte (0) to ensure Idx.unused doesn't point to valid data
+    try std.testing.expectEqual(@as(usize, 1), deserialized.interner.bytes.len());
+    try std.testing.expectEqual(@as(u32, 0), deserialized.interner.entry_count);
+    try std.testing.expectEqual(@as(usize, 0), deserialized.attributes.len());
+    try std.testing.expectEqual(@as(u32, 0), deserialized.next_unique_name);
+}
+
+test "Ident.Store basic CompactWriter roundtrip" {
+    const gpa = std.testing.allocator;
+
+    // Create original store and add some identifiers
+    var original = try Ident.Store.initCapacity(gpa, 16);
+    defer original.deinit(gpa);
+
+    const ident1 = Ident.for_text("hello");
+    const ident2 = Ident.for_text("world!");
+    const ident3 = Ident.for_text("_ignored");
+
+    const idx1 = try original.insert(gpa, ident1);
+    const idx2 = try original.insert(gpa, ident2);
+    const idx3 = try original.insert(gpa, ident3);
+
+    // Verify the attributes in the indices
+    try std.testing.expect(!idx1.attributes.effectful);
+    try std.testing.expect(!idx1.attributes.ignored);
+    try std.testing.expect(idx2.attributes.effectful);
+    try std.testing.expect(!idx2.attributes.ignored);
+    try std.testing.expect(!idx3.attributes.effectful);
+    try std.testing.expect(idx3.attributes.ignored);
+
+    // Create a temp file
+    var tmp_dir = std.testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
+
+    const io = std.testing.io;
+    const file = try tmp_dir.dir.createFile(io, "test_basic_store.dat", .{ .read = true });
+    defer file.close(io);
+
+    // Serialize using CompactWriter with arena allocator
+    var arena = collections.SingleThreadArena.init(gpa);
+    defer arena.deinit();
+    const arena_allocator = arena.allocator();
+
+    var writer = CompactWriter.init();
+    defer writer.deinit(arena_allocator);
+
+    const serialized = try original.serialize(arena_allocator, &writer);
+    try std.testing.expect(@intFromPtr(serialized) != 0);
+
+    // Write to file
+    try writer.writeGather(file, io);
+
+    // Read back
+    const file_size = writer.total_bytes;
+
+    const buffer = try gpa.alignedAlloc(u8, std.mem.Alignment.@"16", file_size);
+    defer gpa.free(buffer);
+
+    _ = try file.readPositionalAll(io, buffer, 0);
+    const bytes_read = file_size;
+    try std.testing.expectEqual(writer.total_bytes, bytes_read);
+
+    // Cast and relocate
+    // The Store struct should be at the beginning (it was appended first)
+    const deserialized = @as(*Ident.Store, @ptrCast(@alignCast(buffer.ptr)));
+
+    deserialized.relocate(@as(isize, @intCast(@intFromPtr(buffer.ptr))));
+
+    // Check the bytes length for validation
+    const bytes_len = deserialized.interner.bytes.len();
+    const idx1_value = @intFromEnum(@as(SmallStringInterner.Idx, @enumFromInt(@as(u32, idx1.idx))));
+
+    // Verify the index is valid
+    if (bytes_len <= idx1_value) {
+        return error.InvalidIndex;
+    }
+
+    // Verify the identifiers are accessible
+    try std.testing.expectEqualStrings("hello", deserialized.getText(idx1));
+    try std.testing.expectEqualStrings("world!", deserialized.getText(idx2));
+    try std.testing.expectEqualStrings("_ignored", deserialized.getText(idx3));
+
+    // Verify next_unique_name is preserved
+    try std.testing.expectEqual(original.next_unique_name, deserialized.next_unique_name);
+
+    // Verify the interner's entry count is preserved
+    try std.testing.expectEqual(@as(u32, 3), deserialized.interner.entry_count);
+}
+
+test "Ident.Store with genUnique CompactWriter roundtrip" {
+    const gpa = std.testing.allocator;
+
+    // Create store and generate unique identifiers
+    var original = try Ident.Store.initCapacity(gpa, 10);
+    defer original.deinit(gpa);
+
+    // Add some regular identifiers
+    const ident1 = Ident.for_text("regular");
+    const idx1 = try original.insert(gpa, ident1);
+
+    // Generate unique identifiers
+    const unique1 = try original.genUnique(gpa);
+    const unique2 = try original.genUnique(gpa);
+    const unique3 = try original.genUnique(gpa);
+
+    // Verify unique names are correct
+    try std.testing.expectEqualStrings("0", original.getText(unique1));
+    try std.testing.expectEqualStrings("1", original.getText(unique2));
+    try std.testing.expectEqualStrings("2", original.getText(unique3));
+
+    // Verify next_unique_name was incremented
+    try std.testing.expectEqual(@as(u32, 3), original.next_unique_name);
+
+    // Create a temp file
+    var tmp_dir = std.testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
+
+    const io = std.testing.io;
+    const file = try tmp_dir.dir.createFile(io, "test_unique_store.dat", .{ .read = true });
+    defer file.close(io);
+
+    // Serialize using arena allocator
+    var arena = collections.SingleThreadArena.init(gpa);
+    defer arena.deinit();
+    const arena_allocator = arena.allocator();
+
+    var writer = CompactWriter.init();
+    defer writer.deinit(arena_allocator);
+
+    const serialized = try original.serialize(arena_allocator, &writer);
+    try std.testing.expect(@intFromPtr(serialized) != 0);
+
+    // Write to file
+    try writer.writeGather(file, io);
+
+    // Read back
+    const file_size = writer.total_bytes;
+
+    const buffer = try gpa.alignedAlloc(u8, std.mem.Alignment.@"16", file_size);
+    defer gpa.free(buffer);
+
+    _ = try file.readPositionalAll(io, buffer, 0);
+    const bytes_read = file_size;
+    try std.testing.expectEqual(writer.total_bytes, bytes_read);
+
+    // Cast and relocate
+    // The Store struct should be at the beginning (it was appended first)
+    const deserialized = @as(*Ident.Store, @ptrCast(@alignCast(buffer.ptr)));
+
+    deserialized.relocate(@as(isize, @intCast(@intFromPtr(buffer.ptr))));
+
+    // Verify all identifiers
+
+    try std.testing.expectEqualStrings("regular", deserialized.getText(idx1));
+    try std.testing.expectEqualStrings("0", deserialized.getText(unique1));
+    try std.testing.expectEqualStrings("1", deserialized.getText(unique2));
+    try std.testing.expectEqualStrings("2", deserialized.getText(unique3));
+
+    // Verify next_unique_name is preserved
+    try std.testing.expectEqual(@as(u32, 3), deserialized.next_unique_name);
+}
+
+test "Ident.Store CompactWriter roundtrip" {
+    const gpa = std.testing.allocator;
+
+    // Create and populate store
+    var original = try Ident.Store.initCapacity(gpa, 5);
+    defer original.deinit(gpa);
+
+    const idx1 = try original.insert(gpa, Ident.for_text("test1"));
+    const idx2 = try original.insert(gpa, Ident.for_text("test2"));
+    try std.testing.expect(@intFromEnum(@as(SmallStringInterner.Idx, @enumFromInt(@as(u32, idx1.idx)))) <
+        @intFromEnum(@as(SmallStringInterner.Idx, @enumFromInt(@as(u32, idx2.idx)))));
+
+    // Create a temp file
+    var tmp_dir = std.testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
+
+    const io = std.testing.io;
+    const file = try tmp_dir.dir.createFile(io, "test_frozen_store.dat", .{ .read = true });
+    defer file.close(io);
+
+    // Serialize using arena allocator
+    var arena = collections.SingleThreadArena.init(gpa);
+    defer arena.deinit();
+    const arena_allocator = arena.allocator();
+
+    var writer = CompactWriter.init();
+    defer writer.deinit(arena_allocator);
+
+    const serialized = try original.serialize(arena_allocator, &writer);
+    try std.testing.expect(@intFromPtr(serialized) != 0);
+
+    // Write to file
+    try writer.writeGather(file, io);
+
+    // Read back
+    const file_size = writer.total_bytes;
+
+    const buffer = try gpa.alignedAlloc(u8, std.mem.Alignment.@"16", file_size);
+    defer gpa.free(buffer);
+
+    _ = try file.readPositionalAll(io, buffer, 0);
+    const bytes_read = file_size;
+    try std.testing.expectEqual(writer.total_bytes, bytes_read);
+
+    // Cast and relocate
+    // The Store struct should be at the beginning (it was appended first)
+    const deserialized = @as(*Ident.Store, @ptrCast(@alignCast(buffer.ptr)));
+
+    deserialized.relocate(@as(isize, @intCast(@intFromPtr(buffer.ptr))));
+}
+
+test "Ident.Store comprehensive CompactWriter roundtrip" {
+    const gpa = std.testing.allocator;
+
+    // Create store with various identifiers
+    var original = try Ident.Store.initCapacity(gpa, 20);
+    defer original.deinit(gpa);
+
+    // Test various identifier types and edge cases
+    // Note: SmallStringInterner starts with a 0 byte at index 0, so strings start at index 1
+    const test_idents = [_]struct { text: []const u8, expected_idx: u32 }{
+        .{ .text = "hello", .expected_idx = 1 },
+        .{ .text = "world!", .expected_idx = 7 },
+        .{ .text = "_ignored", .expected_idx = 14 },
+        .{ .text = "a", .expected_idx = 23 }, // single character
+        .{ .text = "very_long_identifier_name_that_might_cause_issues", .expected_idx = 25 },
+        .{ .text = "effectful!", .expected_idx = 75 },
+        .{ .text = "_", .expected_idx = 86 }, // Just underscore
+        .{ .text = "CamelCase", .expected_idx = 88 },
+        .{ .text = "snake_case", .expected_idx = 98 },
+        .{ .text = "SCREAMING_CASE", .expected_idx = 109 },
+        .{ .text = "hello", .expected_idx = 1 }, // duplicate, should reuse
+    };
+
+    var indices = std.ArrayList(Ident.Idx).empty;
+    defer indices.deinit(gpa);
+
+    for (test_idents) |test_ident| {
+        const ident = Ident.for_text(test_ident.text);
+        const idx = try original.insert(gpa, ident);
+        try indices.append(gpa, idx);
+        // Verify the index matches expectation
+        try std.testing.expectEqual(test_ident.expected_idx, idx.idx);
+    }
+
+    // Add some unique names
+    const unique1 = try original.genUnique(gpa);
+    const unique2 = try original.genUnique(gpa);
+
+    // Verify the interner's hash map is populated
+    try std.testing.expect(original.interner.entry_count > 0);
+
+    // Create a temp file
+    var tmp_dir = std.testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
+
+    const io = std.testing.io;
+    const file = try tmp_dir.dir.createFile(io, "test_comprehensive_store.dat", .{ .read = true });
+    defer file.close(io);
+
+    // Serialize using arena allocator
+    var arena = collections.SingleThreadArena.init(gpa);
+    defer arena.deinit();
+    const arena_allocator = arena.allocator();
+
+    var writer = CompactWriter.init();
+    defer writer.deinit(arena_allocator);
+
+    const serialized = try original.serialize(arena_allocator, &writer);
+    try std.testing.expect(@intFromPtr(serialized) != 0);
+
+    // Write to file
+    try writer.writeGather(file, io);
+
+    // Read back
+    const file_size = writer.total_bytes;
+
+    const buffer = try gpa.alignedAlloc(u8, std.mem.Alignment.@"16", file_size);
+    defer gpa.free(buffer);
+
+    _ = try file.readPositionalAll(io, buffer, 0);
+    const bytes_read = file_size;
+    try std.testing.expectEqual(writer.total_bytes, bytes_read);
+
+    // Cast and relocate
+    // The Store struct should be at the beginning (it was appended first)
+    const deserialized = @as(*Ident.Store, @ptrCast(@alignCast(buffer.ptr)));
+
+    deserialized.relocate(@as(isize, @intCast(@intFromPtr(buffer.ptr))));
+
+    // Verify all identifiers (skip duplicate at end)
+    for (test_idents[0..10], 0..) |test_ident, i| {
+        const idx = indices.items[i];
+        const text = deserialized.getText(idx);
+        try std.testing.expectEqualStrings(test_ident.text, text);
+    }
+
+    // Verify unique names
+    try std.testing.expectEqualStrings("0", deserialized.getText(unique1));
+    try std.testing.expectEqualStrings("1", deserialized.getText(unique2));
+
+    // Verify the interner's entry count is preserved
+    // We inserted 10 unique strings + 2 generated unique names = 12 total
+    try std.testing.expectEqual(@as(u32, 12), deserialized.interner.entry_count);
+
+    // Verify next_unique_name
+    try std.testing.expectEqual(@as(u32, 2), deserialized.next_unique_name);
+}

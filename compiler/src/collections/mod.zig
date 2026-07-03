@@ -1,0 +1,140 @@
+//! Collection utilities and memory alignment constants for the Roc compiler.
+//!
+//! This module provides utilities for managing collections and defines
+//! memory alignment constants used throughout the compiler, particularly
+//! for stack allocations in the interpreter.
+
+const std = @import("std");
+const Allocator = std.mem.Allocator;
+
+/// The highest alignment any Roc type can have.
+/// This is used as the base alignment for the allocation used
+/// in the interpreter for stack allocations.
+pub const max_roc_alignment: std.mem.Alignment = .@"16";
+
+/// Helper for creating an Io.Writer.Allocating from a deprecated Managed(u8).
+/// Zig 0.16 removed Managed.writer(); this bridges the gap.
+pub fn managedWriter(managed: *std.array_list.Managed(u8)) std.Io.Writer.Allocating {
+    var unmanaged: std.ArrayList(u8) = .{ .items = managed.items, .capacity = managed.capacity };
+    return std.Io.Writer.Allocating.fromArrayList(managed.allocator, &unmanaged);
+}
+
+/// Sync an Io.Writer.Allocating back to a Managed(u8).
+pub fn managedWriterFinish(aw: *std.Io.Writer.Allocating, managed: *std.array_list.Managed(u8)) void {
+    const unmanaged = aw.toArrayList();
+    managed.items = unmanaged.items;
+    managed.capacity = unmanaged.capacity;
+}
+
+pub const SafeList = @import("safe_list.zig").SafeList;
+pub const SafeRange = @import("safe_list.zig").SafeRange;
+pub const SafeMultiList = @import("safe_list.zig").SafeMultiList;
+pub const validateRelocatedSpan = @import("safe_list.zig").validateRelocatedSpan;
+
+pub const SafeStringHashMap = @import("safe_hash_map.zig").SafeStringHashMap;
+
+pub const SortedArrayBuilder = @import("SortedArrayBuilder.zig").SortedArrayBuilder;
+pub const ExposedItems = @import("ExposedItems.zig").ExposedItems;
+pub const ExposedItemTarget = @import("ExposedItems.zig").ExposedItemTarget;
+pub const CompactWriter = @import("CompactWriter.zig");
+
+/// Single-threaded arena allocator; the non-atomic counterpart to
+/// `std.heap.ArenaAllocator`.
+pub const SingleThreadArena = @import("SingleThreadArena.zig");
+
+/// Serialization format definitions for embedded module data.
+pub const serialization = @import("serialization.zig");
+pub const SerializedHeader = serialization.SerializedHeader;
+pub const SerializedModuleInfo = serialization.SerializedModuleInfo;
+pub const SERIALIZED_FORMAT_MAGIC = serialization.SERIALIZED_FORMAT_MAGIC;
+pub const SERIALIZED_FORMAT_VERSION = serialization.SERIALIZED_FORMAT_VERSION;
+
+/// Re-exported alignment constant from CompactWriter for convenience.
+/// This alignment is required for all serialization buffers to ensure proper memory access.
+pub const SERIALIZATION_ALIGNMENT = CompactWriter.SERIALIZATION_ALIGNMENT;
+
+/// A range that must have at least one element
+pub const NonEmptyRange = struct {
+    /// Starting index (inclusive)
+    start: u32,
+    /// Number of elements (must be > 0)
+    count: u32,
+
+    /// Convert to a SafeMultiList range
+    pub fn toRange(self: NonEmptyRange, comptime Idx: type) SafeRange(Idx) {
+        std.debug.assert(self.count > 0);
+        return .{
+            .start = @enumFromInt(self.start),
+            .count = self.count,
+        };
+    }
+};
+
+/// A key-value map that uses direct array indexing instead of hashing.
+/// Keys must be enums that are convertible to indices. The value type V must
+/// have a `none` constant that serves as the sentinel value for empty slots.
+pub fn ArrayListMap(comptime K: type, comptime V: type) type {
+    return struct {
+        const Self = @This();
+
+        entries: []V,
+
+        pub fn init(allocator: std.mem.Allocator, capacity: usize) Allocator.Error!Self {
+            const entries = try allocator.alloc(V, capacity);
+            @memset(entries, V.none);
+
+            return .{ .entries = entries };
+        }
+
+        pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+            allocator.free(self.entries);
+        }
+
+        pub fn get(self: Self, key: K) ?V {
+            const idx = @intFromEnum(key);
+            if (idx >= self.entries.len) return null;
+
+            const value = self.entries[idx];
+            if (value == V.none) {
+                return null;
+            }
+            return value;
+        }
+
+        const init_capacity = @as(comptime_int, @max(1, std.atomic.cache_line / @sizeOf(V)));
+
+        /// Called when memory growth is necessary. Returns a capacity larger than
+        /// minimum that grows super-linearly. Copied from std.ArrayList.
+        inline fn growCapacity(minimum: usize) usize {
+            return minimum +| (minimum / 2 + init_capacity);
+        }
+
+        pub fn put(self: *Self, allocator: std.mem.Allocator, key: K, value: V) Allocator.Error!void {
+            const idx = @intFromEnum(key);
+
+            // Grow if necessary
+            if (idx >= self.entries.len) {
+                const new_size = growCapacity(idx);
+                const new_entries = try allocator.realloc(self.entries, new_size);
+                @memset(new_entries[self.entries.len..], V.none);
+                self.entries = new_entries;
+            }
+
+            self.entries[idx] = value;
+        }
+
+        pub fn contains(self: Self, key: K) bool {
+            return self.get(key) != null;
+        }
+    };
+}
+
+test "collections tests" {
+    std.testing.refAllDecls(@import("CompactWriter.zig"));
+    std.testing.refAllDecls(@import("ExposedItems.zig"));
+    std.testing.refAllDecls(@import("safe_hash_map.zig"));
+    std.testing.refAllDecls(@import("safe_list.zig"));
+    std.testing.refAllDecls(@import("serialization.zig"));
+    std.testing.refAllDecls(@import("SortedArrayBuilder.zig"));
+    std.testing.refAllDecls(@import("SingleThreadArena.zig"));
+}

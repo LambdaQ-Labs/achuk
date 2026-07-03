@@ -1,0 +1,62 @@
+# META
+~~~ini
+description=if_then_else (3)
+type=expr
+~~~
+# SOURCE
+~~~roc
+if bool {
+	A
+} else 2
+~~~
+# EXPECTED
+MISSING METHOD - if_then_else_simple_block_formatting.md:3:8:3:9
+# PROBLEMS
+
+┌────────────────┐
+│ MISSING METHOD ├─ This `from_numeral` method is being called on a value ────┐
+└┬───────────────┘  whose type doesn't have that method.                      │
+ │                                                                            │
+ │  } else 2                                                                  │
+ │         ‾                                                                  │
+ └─────────────────────────────── if_then_else_simple_block_formatting.md:3:8 ┘
+
+    The value's type, which does not have a method named `from_numeral`, is:
+
+        [A, ..]
+
+# TOKENS
+~~~zig
+KwIf,LowerIdent,OpenCurly,
+UpperIdent,
+CloseCurly,KwElse,Int,
+EndOfFile,
+~~~
+# PARSE
+~~~clojure
+(e-if-then-else
+	(e-ident (raw "bool"))
+	(e-block
+		(statements
+			(e-tag (raw "A"))))
+	(e-int (raw "2")))
+~~~
+# FORMATTED
+~~~roc
+NO CHANGE
+~~~
+# CANONICALIZE
+~~~clojure
+(e-if
+	(if-branches
+		(if-branch
+			(e-runtime-error (tag "ident_not_in_scope"))
+			(e-block
+				(e-tag (name "A")))))
+	(if-else
+		(e-num (value "2"))))
+~~~
+# TYPES
+~~~clojure
+(expr (type "[A, ..]"))
+~~~

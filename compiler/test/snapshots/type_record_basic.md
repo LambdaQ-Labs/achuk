@@ -1,0 +1,133 @@
+# META
+~~~ini
+description=Basic record type canonicalization
+type=file
+~~~
+# SOURCE
+~~~roc
+app [main!] { pf: platform "../basic-cli/main.roc" }
+
+getName : { name: Str, age: U64 } -> Str
+getName = |_person| "hello"
+
+main! = |_| getName({namee: "luke", age:21})
+~~~
+# EXPECTED
+TYPE MISMATCH - type_record_basic.md:6:13:6:13
+# PROBLEMS
+
+┌───────────────┐
+│ TYPE MISMATCH ├─ The first argument being passed to this function has the ──┐
+└┬──────────────┘  wrong type.                                                │
+ │                                                                            │
+ │  main! = |_| getName({namee: "luke", age:21})                              │
+ │                      ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾                               │
+ └───────────────────────────────────────────────── type_record_basic.md:6:21 ┘
+
+    This argument has the type:
+
+        { age: a, namee: b }
+          where [
+            a.from_numeral : Numeral -> Try(a, [InvalidNumeral(Str)]),
+            b.from_quote : Str -> Try(b, [BadQuotedBytes(Str)]),
+          ]
+
+    But `getName` needs the first argument to be:
+
+        { age: U64, name: Str }
+
+    Hint: Maybe `namee` should be `name`?
+
+# TOKENS
+~~~zig
+KwApp,OpenSquare,LowerIdent,CloseSquare,OpenCurly,LowerIdent,OpColon,KwPlatform,StringStart,StringPart,StringEnd,CloseCurly,
+LowerIdent,OpColon,OpenCurly,LowerIdent,OpColon,UpperIdent,Comma,LowerIdent,OpColon,UpperIdent,CloseCurly,OpArrow,UpperIdent,
+LowerIdent,OpAssign,OpBar,NamedUnderscore,OpBar,StringStart,StringPart,StringEnd,
+LowerIdent,OpAssign,OpBar,Underscore,OpBar,LowerIdent,NoSpaceOpenRound,OpenCurly,LowerIdent,OpColon,StringStart,StringPart,StringEnd,Comma,LowerIdent,OpColon,Int,CloseCurly,CloseRound,
+EndOfFile,
+~~~
+# PARSE
+~~~clojure
+(file
+	(app
+		(provides
+			(exposed-lower-ident
+				(text "main!")))
+		(record-field (name "pf")
+			(e-string
+				(e-string-part (raw "../basic-cli/main.roc"))))
+		(packages
+			(record-field (name "pf")
+				(e-string
+					(e-string-part (raw "../basic-cli/main.roc"))))))
+	(statements
+		(s-type-anno (name "getName")
+			(ty-fn
+				(ty-record
+					(anno-record-field (name "name")
+						(ty (name "Str")))
+					(anno-record-field (name "age")
+						(ty (name "U64"))))
+				(ty (name "Str"))))
+		(s-decl
+			(p-ident (raw "getName"))
+			(e-lambda
+				(args
+					(p-ident (raw "_person")))
+				(e-string
+					(e-string-part (raw "hello")))))
+		(s-decl
+			(p-ident (raw "main!"))
+			(e-lambda
+				(args
+					(p-underscore))
+				(e-apply
+					(e-ident (raw "getName"))
+					(e-record
+						(field (field "namee")
+							(e-string
+								(e-string-part (raw "luke"))))
+						(field (field "age")
+							(e-int (raw "21")))))))))
+~~~
+# FORMATTED
+~~~roc
+app [main!] { pf: platform "../basic-cli/main.roc" }
+
+getName : { name : Str, age : U64 } -> Str
+getName = |_person| "hello"
+
+main! = |_| getName({ namee: "luke", age: 21 })
+~~~
+# CANONICALIZE
+~~~clojure
+(can-ir
+	(d-let
+		(p-assign (ident "getName"))
+		(e-lambda
+			(args
+				(p-assign (ident "_person")))
+			(e-string
+				(e-literal (string "hello"))))
+		(annotation
+			(ty-fn (effectful false)
+				(ty-record
+					(field (field "name")
+						(ty-lookup (name "Str") (builtin)))
+					(field (field "age")
+						(ty-lookup (name "U64") (builtin))))
+				(ty-lookup (name "Str") (builtin)))))
+	(d-let
+		(p-assign (ident "main!"))
+		(e-runtime-error (tag "erroneous_value_expr"))))
+~~~
+# TYPES
+~~~clojure
+(inferred-types
+	(defs
+		(patt (type "Error -> Str"))
+		(patt (type "_arg -> Error")))
+	(expressions
+		(expr (type "Error -> Str"))
+		(expr (type "_arg -> Error"))))
+~~~

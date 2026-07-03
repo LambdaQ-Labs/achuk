@@ -1,0 +1,91 @@
+# META
+~~~ini
+description=Type annotation connection to definitions
+type=snippet
+~~~
+# SOURCE
+~~~roc
+add_one : U64 -> U64
+add_one = |x| x + 1
+
+my_number : U64
+my_number = add_one(42)
+~~~
+# EXPECTED
+NIL
+# PROBLEMS
+NIL
+# TOKENS
+~~~zig
+LowerIdent,OpColon,UpperIdent,OpArrow,UpperIdent,
+LowerIdent,OpAssign,OpBar,LowerIdent,OpBar,LowerIdent,OpPlus,Int,
+LowerIdent,OpColon,UpperIdent,
+LowerIdent,OpAssign,LowerIdent,NoSpaceOpenRound,Int,CloseRound,
+EndOfFile,
+~~~
+# PARSE
+~~~clojure
+(file
+	(type-module)
+	(statements
+		(s-type-anno (name "add_one")
+			(ty-fn
+				(ty (name "U64"))
+				(ty (name "U64"))))
+		(s-decl
+			(p-ident (raw "add_one"))
+			(e-lambda
+				(args
+					(p-ident (raw "x")))
+				(e-binop (op "+")
+					(e-ident (raw "x"))
+					(e-int (raw "1")))))
+		(s-type-anno (name "my_number")
+			(ty (name "U64")))
+		(s-decl
+			(p-ident (raw "my_number"))
+			(e-apply
+				(e-ident (raw "add_one"))
+				(e-int (raw "42"))))))
+~~~
+# FORMATTED
+~~~roc
+NO CHANGE
+~~~
+# CANONICALIZE
+~~~clojure
+(can-ir
+	(d-let
+		(p-assign (ident "add_one"))
+		(e-lambda
+			(args
+				(p-assign (ident "x")))
+			(e-dispatch-call (method "plus") (constraint-fn-var 69)
+				(receiver
+					(e-lookup-local
+						(p-assign (ident "x"))))
+				(args
+					(e-num (value "1")))))
+		(annotation
+			(ty-fn (effectful false)
+				(ty-lookup (name "U64") (builtin))
+				(ty-lookup (name "U64") (builtin)))))
+	(d-let
+		(p-assign (ident "my_number"))
+		(e-call (constraint-fn-var 188)
+			(e-lookup-local
+				(p-assign (ident "add_one")))
+			(e-num (value "42")))
+		(annotation
+			(ty-lookup (name "U64") (builtin)))))
+~~~
+# TYPES
+~~~clojure
+(inferred-types
+	(defs
+		(patt (type "U64 -> U64"))
+		(patt (type "U64")))
+	(expressions
+		(expr (type "U64 -> U64"))
+		(expr (type "U64"))))
+~~~

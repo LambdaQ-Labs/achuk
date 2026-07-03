@@ -1,0 +1,1064 @@
+//! This module defines the core data structures for representing types in the compiler's
+//! Hindley-Milner type inference system. It includes:
+//!
+//! - `Var`: unique type variable identifiers
+//! - `Descriptor`: the rank, mark, and structure of a type
+//! - `Content`: the semantic meaning of a type (flex var, alias, function, record, etc.)
+//! - `FlatType`: the 'flat' shape of a type (tuples, numbers, tag unions, etc.)
+//! - `Alias`: nominal or structural type aliases
+//! - `Func`, `Record`, `TagUnion`: structured type forms
+//!
+//! Special care is taken to keep memory layouts small and efficient. When modifying
+//! these types, please consider their size impact and unification performance.
+//!
+//! Note: In other HM compilers (Elm, Roc Rust), marks are used to track intermediate
+//! metadata around type variables. Here, we intentionally do _not_ use them. The
+//! idea being that because marks are not used after type checking, if we store them
+//! on the type descriptor, then that memory has to stay allocated until the end
+//! of the program, even though they're not used! Instead, we allocate intermediate
+//! data structures during type checking to do the job that marks do, then deallocate
+//! after the phase, freeing that memory.
+
+const std = @import("std");
+const base = @import("base");
+const collections = @import("collections");
+
+const Ident = base.Ident;
+const MkSafeList = collections.SafeList;
+const MkSafeMultiList = collections.SafeMultiList;
+
+test {
+    // If your changes caused this number to go down, great! Please update it to the lower number.
+    // If it went up, please make sure your changes are absolutely required!
+    try std.testing.expectEqual(32, @sizeOf(Descriptor));
+    try std.testing.expectEqual(28, @sizeOf(Content));
+    try std.testing.expectEqual(20, @sizeOf(Alias));
+    try std.testing.expectEqual(24, @sizeOf(FlatType));
+    try std.testing.expectEqual(12, @sizeOf(Record));
+    try std.testing.expectEqual(20, @sizeOf(NominalType)); // Increased from 16 due to source identity and opacity bits
+    // Folding `binop_negated` and `num_literal` into the `origin` union is a
+    // semantic regrouping (kind-specific payloads now live inside their variant),
+    // not a size win: the literal-origin variant still embeds a full `NumeralInfo`,
+    // so the `Origin` union dominates the struct at 52 bytes total.
+    try std.testing.expectEqual(52, @sizeOf(StaticDispatchConstraint));
+    try std.testing.expectEqual(16, @sizeOf(Func));
+}
+
+test "source declaration checked constructors enforce packed statement capacity" {
+    const max_alias_statement = SourceDecl.max_statement;
+    const max_alias_decl = try SourceDecl.fromStatementWithBuiltinOriginChecked(max_alias_statement, true);
+    try std.testing.expectEqual(@as(?u32, max_alias_statement), max_alias_decl.toOptional());
+    try std.testing.expect(max_alias_decl.originIsBuiltin());
+
+    try std.testing.expectError(
+        error.OutOfMemory,
+        SourceDecl.fromStatementWithBuiltinOriginChecked(max_alias_statement + 1, false),
+    );
+
+    const max_nominal_statement = NominalType.Source.max_statement;
+    const max_nominal_decl = try SourceDecl.fromStatementWithBuiltinOriginChecked(max_nominal_statement, true);
+    const max_nominal_source = try NominalType.Source.initChecked(max_nominal_decl, true, true);
+    try std.testing.expect(max_nominal_source.sourceDecl().eql(max_nominal_decl));
+    try std.testing.expect(max_nominal_source.isOpaque());
+    try std.testing.expect(max_nominal_source.originIsBuiltin());
+
+    const too_large_for_nominal = try SourceDecl.fromStatementChecked(max_nominal_statement + 1);
+    try std.testing.expectError(
+        error.OutOfMemory,
+        NominalType.Source.initChecked(too_large_for_nominal, false, false),
+    );
+}
+
+/// A type variable
+pub const Var = enum(u32) {
+    _,
+
+    /// A safe list of type variables
+    pub const SafeList = MkSafeList(Var);
+
+    /// Debug representation of a type variable, panics on allocation failure
+    pub fn allocPrint(self: Var, gpa: std.mem.Allocator) std.mem.Allocator.Error![]u8 {
+        return try std.fmt.allocPrint(gpa, "#{d}", .{@intFromEnum(self)});
+    }
+};
+
+/// A mapping from polymorphic type variables to concrete type variables
+pub const VarMap = std.hash_map.HashMap(Var, Var, std.hash_map.AutoContext(Var), 80);
+
+/// TypeScope represents nested type scopes for resolving polymorphic type variables.
+/// Each HashMap in the list represents a scope level, mapping polymorphic type variables
+/// to their resolved monomorphic equivalents.
+pub const TypeScope = struct {
+    scopes: std.array_list.Managed(VarMap),
+
+    pub fn init(allocator: std.mem.Allocator) TypeScope {
+        return .{
+            .scopes = std.array_list.Managed(VarMap).init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *TypeScope) void {
+        for (self.scopes.items) |*scope| {
+            scope.deinit();
+        }
+        self.scopes.deinit();
+    }
+
+    /// Look up a type variable in all nested scopes, returning the mapped variable if found
+    pub fn lookup(self: *const TypeScope, var_to_find: Var) ?Var {
+        for (self.scopes.items) |*scope| {
+            if (scope.get(var_to_find)) |mapped_var| {
+                return mapped_var;
+            }
+        }
+        return null;
+    }
+};
+
+/// A type descriptor
+pub const Descriptor = struct {
+    content: Content,
+    rank: Rank,
+};
+
+/// In general, the rank tracks the number of let-bindings a variable is "under".
+/// Top-level definitions have rank 1. A let inside a top-level definition gets rank 2, and so on.
+///
+/// An example:
+/// ```
+/// foo = 3
+///
+/// plus_five = |arg| {
+///    x = 5
+///    arg + x
+/// }
+/// ```
+/// Here the rank of `foo` is 1 because it is at the top level and the rank of `x` is 2 because it is under or inside `plus_five`.
+///
+/// Imported variables get rank 2.
+///
+/// Rank 0 is special, it is used for variables that are generalized (generic).
+///
+/// Keeping track of ranks makes type inference faster.
+///
+pub const Rank = enum(u8) {
+    /// When the corresponding type is generic, like in `List.len`.
+    generalized = 0,
+    outermost = 1,
+    _,
+
+    /// Get the lowest rank
+    pub fn min(a: Rank, b: Rank) Rank {
+        return @enumFromInt(@min(@intFromEnum(a), @intFromEnum(b)));
+    }
+
+    /// Get the lowest rank
+    pub fn max(a: Rank, b: Rank) Rank {
+        return @enumFromInt(@max(@intFromEnum(a), @intFromEnum(b)));
+    }
+
+    /// Get the next rank
+    pub fn next(a: Rank) Rank {
+        return @enumFromInt(@intFromEnum(a) + 1);
+    }
+
+    /// Get the prev rank
+    pub fn prev(a: Rank) Rank {
+        return @enumFromInt(@intFromEnum(a) - 1);
+    }
+};
+
+// content //
+
+/// Represents what the a type *is*
+pub const Content = union(enum(u8)) {
+    const Self = @This();
+
+    flex: Flex,
+    rigid: Rigid,
+    alias: Alias,
+    structure: FlatType,
+    err,
+
+    // helpers //
+
+    /// Unwrap a record or return null
+    pub fn unwrapRecord(content: Self) ?Record {
+        switch (content) {
+            .structure => |flat_type| {
+                switch (flat_type) {
+                    .record => |record| {
+                        return record;
+                    },
+                    else => return null,
+                }
+            },
+            else => return null,
+        }
+    }
+
+    /// Unwrap a tag union or return null
+    pub fn unwrapTagUnion(content: Self) ?TagUnion {
+        switch (content) {
+            .structure => |flat_type| {
+                switch (flat_type) {
+                    .tag_union => |tag_union| {
+                        return tag_union;
+                    },
+                    else => return null,
+                }
+            },
+            else => return null,
+        }
+    }
+
+    /// Unwrap a nominal type or return null
+    pub fn unwrapNominalType(content: Self) ?NominalType {
+        switch (content) {
+            .structure => |flat_type| {
+                switch (flat_type) {
+                    .nominal_type => |nominal_type| {
+                        return nominal_type;
+                    },
+                    else => return null,
+                }
+            },
+            else => return null,
+        }
+    }
+
+    /// Unwrap a function (pure, eff, or unbound) and return it
+    pub fn unwrapFunc(content: Self) ?Func {
+        switch (content) {
+            .structure => |flat_type| {
+                switch (flat_type) {
+                    .fn_pure => |func| return func,
+                    .fn_effectful => |func| return func,
+                    .fn_unbound => |func| return func,
+                    else => return null,
+                }
+            },
+            else => return null,
+        }
+    }
+
+    /// Unwrap a function (pure, eff, or unbound) and return it
+    pub fn unwrapFuncFull(content: Self) ?struct { func: Func, ext: enum { unbound, pure, effectful } } {
+        switch (content) {
+            .structure => |flat_type| {
+                switch (flat_type) {
+                    .fn_pure => |func| return .{ .func = func, .ext = .pure },
+                    .fn_effectful => |func| return .{ .func = func, .ext = .effectful },
+                    .fn_unbound => |func| return .{ .func = func, .ext = .unbound },
+                    else => return null,
+                }
+            },
+            else => return null,
+        }
+    }
+};
+
+// flex //
+
+/// A flex var, with optional static dispatch constraints
+pub const Flex = struct {
+    name: ?Ident.Idx,
+    constraints: StaticDispatchConstraint.SafeList.Range,
+
+    pub fn init() Flex {
+        return .{
+            .name = null,
+            .constraints = StaticDispatchConstraint.SafeList.Range.empty(),
+        };
+    }
+
+    pub fn withName(self: Flex, name: ?Ident.Idx) Flex {
+        return .{
+            .name = name,
+            .constraints = self.constraints,
+        };
+    }
+
+    pub fn withConstraints(self: Flex, constraints: StaticDispatchConstraint.SafeList.Range) Flex {
+        return .{
+            .name = self.name,
+            .constraints = constraints,
+        };
+    }
+};
+
+// rigid //
+
+/// A rigid var, with optional static dispatch constraints
+pub const Rigid = struct {
+    name: Ident.Idx,
+    constraints: StaticDispatchConstraint.SafeList.Range,
+
+    pub fn init(name: Ident.Idx) Rigid {
+        return .{
+            .name = name,
+            .constraints = StaticDispatchConstraint.SafeList.Range.empty(),
+        };
+    }
+
+    pub fn withConstraints(self: Rigid, constraints: StaticDispatchConstraint.SafeList.Range) Rigid {
+        return .{
+            .name = self.name,
+            .constraints = constraints,
+        };
+    }
+};
+
+// alias //
+
+/// A named alias to a different type
+pub const Alias = struct {
+    ident: TypeIdent,
+    vars: Var.SafeList.NonEmptyRange,
+    /// The full module path where this alias type was originally defined
+    /// (e.g., "Json.Decode" or "mypackage.Data.Person")
+    origin_module: Ident.Idx,
+    /// CIR statement index of the source declaration in origin_module, when
+    /// this alias came from a concrete source declaration.
+    source_decl: SourceDecl = .none,
+};
+
+/// Represents an ident of a type
+/// TODO: Should this be something like CanIdent???
+pub const TypeIdent = struct {
+    const Self = @This();
+
+    ident_idx: Ident.Idx,
+};
+
+/// Source statement identity for a local nominal/alias declaration.
+///
+/// This is stored in hot type payloads, so it deliberately uses one u32 slot.
+/// Alias source identity stores a u30 statement plus presence and builtin-origin
+/// bits. Nominal source identity stores a u29 statement plus presence, opacity,
+/// and builtin-origin bits. Producer paths must use the checked constructors so
+/// oversized CIR statement ids return `error.OutOfMemory` before release builds
+/// can truncate packed fields.
+pub const SourceDecl = packed struct(u32) {
+    statement: u30,
+    present: bool,
+    builtin_origin: bool,
+
+    pub const max_statement: u32 = std.math.maxInt(u30);
+
+    pub const none: SourceDecl = .{ .statement = 0, .present = false, .builtin_origin = false };
+
+    pub fn fromOptional(source_decl: ?u32) SourceDecl {
+        return fromOptionalWithBuiltinOrigin(source_decl, false);
+    }
+
+    pub fn fromOptionalChecked(source_decl: ?u32) std.mem.Allocator.Error!SourceDecl {
+        return fromOptionalWithBuiltinOriginChecked(source_decl, false);
+    }
+
+    pub fn fromOptionalWithBuiltinOrigin(source_decl: ?u32, builtin_origin: bool) SourceDecl {
+        const statement = source_decl orelse return .none;
+        return fromStatementWithBuiltinOrigin(statement, builtin_origin);
+    }
+
+    pub fn fromOptionalWithBuiltinOriginChecked(source_decl: ?u32, builtin_origin: bool) std.mem.Allocator.Error!SourceDecl {
+        const statement = source_decl orelse return .none;
+        return fromStatementWithBuiltinOriginChecked(statement, builtin_origin);
+    }
+
+    pub fn fromStatement(statement: u32) SourceDecl {
+        return fromStatementWithBuiltinOrigin(statement, false);
+    }
+
+    pub fn fromStatementChecked(statement: u32) std.mem.Allocator.Error!SourceDecl {
+        return fromStatementWithBuiltinOriginChecked(statement, false);
+    }
+
+    pub fn fromStatementWithBuiltinOrigin(statement: u32, builtin_origin: bool) SourceDecl {
+        std.debug.assert(statement <= max_statement);
+        return .{ .statement = @intCast(statement), .present = true, .builtin_origin = builtin_origin };
+    }
+
+    pub fn fromStatementWithBuiltinOriginChecked(statement: u32, builtin_origin: bool) std.mem.Allocator.Error!SourceDecl {
+        if (statement > max_statement) return error.OutOfMemory;
+        return fromStatementWithBuiltinOrigin(statement, builtin_origin);
+    }
+
+    pub fn toOptional(self: SourceDecl) ?u32 {
+        return if (self.present) self.statement else null;
+    }
+
+    pub fn originIsBuiltin(self: SourceDecl) bool {
+        return self.present and self.builtin_origin;
+    }
+
+    pub fn eql(self: SourceDecl, other: SourceDecl) bool {
+        if (self.present != other.present) return false;
+        return !self.present or (self.statement == other.statement and self.builtin_origin == other.builtin_origin);
+    }
+};
+
+const NominalSource = packed struct(u32) {
+    statement: u29,
+    present: bool,
+    is_opaque: bool,
+    builtin_origin: bool,
+
+    pub const max_statement: u32 = std.math.maxInt(u29);
+
+    pub fn init(source_decl: SourceDecl, is_opaque: bool, builtin_origin: bool) NominalSource {
+        if (source_decl.toOptional()) |statement| {
+            std.debug.assert(statement <= max_statement);
+            return .{
+                .statement = @intCast(statement),
+                .present = true,
+                .is_opaque = is_opaque,
+                .builtin_origin = builtin_origin,
+            };
+        }
+
+        return .{
+            .statement = 0,
+            .present = false,
+            .is_opaque = is_opaque,
+            .builtin_origin = builtin_origin,
+        };
+    }
+
+    pub fn initChecked(source_decl: SourceDecl, is_opaque: bool, builtin_origin: bool) std.mem.Allocator.Error!NominalSource {
+        if (source_decl.toOptional()) |statement| {
+            if (statement > max_statement) return error.OutOfMemory;
+        }
+
+        return init(source_decl, is_opaque, builtin_origin);
+    }
+
+    pub fn sourceDecl(self: NominalSource) SourceDecl {
+        return if (self.present) SourceDecl.fromStatementWithBuiltinOrigin(self.statement, self.builtin_origin) else .none;
+    }
+
+    pub fn isOpaque(self: NominalSource) bool {
+        return self.is_opaque;
+    }
+
+    pub fn originIsBuiltin(self: NominalSource) bool {
+        return self.builtin_origin;
+    }
+};
+
+// flat types //
+
+/// Represents type without indirection, it's the concrete form that a type
+/// takes after resolving type variables and aliases.
+pub const FlatType = union(enum(u8)) {
+    record: Record,
+    record_unbound: RecordField.SafeMultiList.Range,
+    tuple: Tuple,
+    nominal_type: NominalType,
+    fn_pure: Func,
+    fn_effectful: Func,
+    fn_unbound: Func,
+    empty_record,
+    tag_union: TagUnion,
+    empty_tag_union,
+};
+
+// tuples //
+
+/// Represents a tuple
+pub const Tuple = struct {
+    elems: Var.SafeList.Range,
+};
+
+// number types (used by layout and canonicalization) //
+
+/// Integer types - used by layout.zig
+pub const Int = struct {
+    /// The exact precision of an Int
+    pub const Precision = enum(u4) {
+        u8 = 0,
+        i8 = 1,
+        u16 = 2,
+        i16 = 3,
+        u32 = 4,
+        i32 = 5,
+        u64 = 6,
+        i64 = 7,
+        u128 = 8,
+        i128 = 9,
+
+        /// Size in bytes
+        pub fn size(self: @This()) u32 {
+            // int values always have the same size as their alignment
+            return @as(u32, @intCast(self.alignment().toByteUnits()));
+        }
+
+        /// Alignment
+        pub fn alignment(self: @This()) std.mem.Alignment {
+            // Both self and std.mem.Alignment are stored as log2(alignment) integers,
+            // although we have to divide self by 2 to get to that exact representation.
+            return @enumFromInt(@intFromEnum(self) / 2);
+        }
+    };
+
+    /// The lowest number of bits that can represent the decimal value of an Int literal, *excluding* its sign.
+    /// (By design, the sign is stored separately in IntRequirements.)
+    pub const BitsNeeded = enum(u4) {
+        @"7" = 0, // 7-bit integers (that is, `I8` - which uses 1 bit for the sign) are the smallest we support
+        @"8" = 1,
+        @"9_to_15" = 2,
+        @"16" = 3,
+        @"17_to_31" = 4,
+        @"32" = 5,
+        @"33_to_63" = 6,
+        @"64" = 7,
+        @"65_to_127" = 8,
+        @"128" = 9,
+
+        /// Calculate the BitsNeeded for a given u128 value
+        pub fn fromValue(val: u128) BitsNeeded {
+            if (val == 0) return .@"7";
+
+            // Count leading zeros to determine how many bits are needed
+            const leading_zeros = @clz(val);
+            const bits_used = 128 - leading_zeros;
+
+            // Map bits used to our enum values
+            return switch (bits_used) {
+                0...7 => .@"7",
+                8 => .@"8",
+                9...15 => .@"9_to_15",
+                16 => .@"16",
+                17...31 => .@"17_to_31",
+                32 => .@"32",
+                33...63 => .@"33_to_63",
+                64 => .@"64",
+                65...127 => .@"65_to_127",
+                128 => .@"128",
+                else => unreachable,
+            };
+        }
+
+        /// Convert the BitsNeeded enum to the actual number of bits
+        pub fn toBits(self: BitsNeeded) u8 {
+            return switch (self) {
+                .@"7" => 7,
+                .@"8" => 8,
+                .@"9_to_15" => 9,
+                .@"16" => 16,
+                .@"17_to_31" => 17,
+                .@"32" => 32,
+                .@"33_to_63" => 33,
+                .@"64" => 64,
+                .@"65_to_127" => 65,
+                .@"128" => 128,
+            };
+        }
+    };
+};
+
+/// Floating-point types - used by layout.zig
+pub const Frac = struct {
+    pub const Precision = enum(u3) {
+        f32 = 2,
+        f64 = 3,
+        dec = 4,
+
+        /// Size in bytes
+        pub fn size(self: @This()) u32 {
+            // frac values always have the same size as their alignment
+            return @as(u32, @intCast(self.alignment().toByteUnits()));
+        }
+
+        /// Alignment
+        pub fn alignment(self: @This()) std.mem.Alignment {
+            // Map precision values to log2(alignment):
+            // f32 (2) -> 4 bytes -> log2(4) = 2
+            // f64 (3) -> 8 bytes -> log2(8) = 3
+            // dec (4) -> 16 bytes -> log2(16) = 4
+            return @enumFromInt(@intFromEnum(self));
+        }
+    };
+
+    /// The requirements of a particular Frac literal: which types can represent it in memory.
+    /// We don't bother tracking whether it can fit in F64, because:
+    /// - If it can fit in F32 without precision loss compared to F64, then it can definitely fit in F64 as well.
+    /// - If it can't fit in F32 or Dec, then clearly must have fit in F64, or else we would have errored out.
+    /// - If it can't fit in F32 but it can fit in Dec, then it can fit (with precision loss) in F64, which is fine.
+    ///
+    /// Examples:
+    ///
+    ///     3.14 - fits in f32, f64, and dec
+    ///     1e40 - fits only in f64 (exceeds f32's max of ~3.4e38, and is out of dec's range)
+    ///     0.1 - fits in f32, f64, and dec (though f32 and f64 use binary approximation)
+    ///     NaN - fits in f32 and f64, but not dec
+    ///     1.23456789012345 - may fit in f64 and dec, but not f32 (precision loss)
+    pub const Requirements = packed struct {
+        fits_in_f32: bool,
+        fits_in_dec: bool,
+    };
+};
+
+/// Requirements for integer literals - used by CIR.zig for type inference
+pub const IntRequirements = struct {
+    // Whether the literal was negative, and therefore only unifies with signed ints
+    sign_needed: bool,
+
+    // The lowest number of bits that can represent the decimal value of the Int literal *excluding* its sign.
+    bits_needed: u8,
+
+    // True if the literal is an exact power of two (e.g., 1, 2, 4, ..., 2^k) on a boundary of a signed int.
+    // This is crucial to allow the single negative boundary value −2^(N−1) when bits_needed == N.
+    // When unifying multiple literals, we AND this flag to remain conservative.
+    is_minimum_signed: bool,
+
+    pub fn init() @This() {
+        return .{
+            .sign_needed = false,
+            .bits_needed = 0,
+            .is_minimum_signed = false,
+        };
+    }
+
+    /// Unifies two IntRequirements, returning the most restrictive combination
+    pub fn unify(self: IntRequirements, other: IntRequirements) IntRequirements {
+        return IntRequirements{
+            .sign_needed = self.sign_needed or other.sign_needed,
+            .bits_needed = @max(self.bits_needed, other.bits_needed),
+            .is_minimum_signed = self.is_minimum_signed and other.is_minimum_signed,
+        };
+    }
+
+    /// Create Requirements from a u128 value and whether it's negated
+    pub fn fromIntLiteral(val: u128, is_negated: bool) IntRequirements {
+        const bits_need = Int.BitsNeeded.fromValue(val);
+        return IntRequirements{
+            .sign_needed = is_negated,
+            .bits_needed = bits_need.toBits(),
+            .is_minimum_signed = is_negated and IntRequirements.isMinimumSigned(val),
+        };
+    }
+
+    /// Check if a value is a minimum signed value.
+    /// These need special consideration
+    pub fn isMinimumSigned(val: u128) bool {
+        return switch (val) {
+            @as(u128, @intCast(std.math.maxInt(i8))) + 1 => true,
+            @as(u128, @intCast(std.math.maxInt(i16))) + 1 => true,
+            @as(u128, @intCast(std.math.maxInt(i32))) + 1 => true,
+            @as(u128, @intCast(std.math.maxInt(i64))) + 1 => true,
+            @as(u128, @intCast(std.math.maxInt(i128))) + 1 => true,
+            else => false,
+        };
+    }
+};
+
+/// Requirements for floating-point literals - used by CIR.zig for type inference
+pub const FracRequirements = struct {
+    fits_in_f32: bool,
+    fits_in_dec: bool,
+
+    pub fn init() @This() {
+        return .{ .fits_in_f32 = true, .fits_in_dec = true };
+    }
+
+    /// Unifies two FracRequirements, returning the intersection of capabilities
+    pub fn unify(self: FracRequirements, other: FracRequirements) FracRequirements {
+        return FracRequirements{
+            .fits_in_f32 = self.fits_in_f32 and other.fits_in_f32,
+            .fits_in_dec = self.fits_in_dec and other.fits_in_dec,
+        };
+    }
+};
+
+// nominal types //
+
+/// A nominal user-defined type
+pub const NominalType = struct {
+    pub const Source = NominalSource;
+
+    ident: TypeIdent,
+    vars: Var.SafeList.NonEmptyRange,
+    /// The full module path where this nominal type was originally defined
+    /// (e.g., "Json.Decode" or "mypackage.Data.Person")
+    origin_module: Ident.Idx,
+    /// Packed source-declaration and opacity bits.
+    source: NominalSource,
+
+    pub fn sourceDecl(self: NominalType) SourceDecl {
+        return self.source.sourceDecl();
+    }
+
+    pub fn sourceDeclOptional(self: NominalType) ?u32 {
+        return self.source.sourceDecl().toOptional();
+    }
+
+    pub fn isOpaque(self: NominalType) bool {
+        return self.source.isOpaque();
+    }
+
+    pub fn originIsBuiltin(self: NominalType) bool {
+        return self.source.originIsBuiltin();
+    }
+
+    /// Checks if backing types can unify directly with this nominal type
+    pub fn canLiftInner(self: NominalType, cur_module_idx: Ident.Idx) bool {
+        if (self.isOpaque()) {
+            // If opaque, then can only lift inner type if the current module is
+            // the same
+            return self.origin_module.eql(cur_module_idx);
+        }
+
+        // If not opaque, then the inner type can always be lifted
+        return true;
+    }
+};
+
+// functions //
+
+/// Represents a function
+pub const Func = struct {
+    args: Var.SafeList.Range,
+    ret: Var,
+    needs_instantiation: bool,
+};
+
+// records //
+
+/// Represents a record
+pub const Record = struct {
+    fields: RecordField.SafeMultiList.Range,
+    ext: Var,
+
+    const Self = @This();
+};
+
+/// A field on a record
+pub const RecordField = struct {
+    const Self = @This();
+
+    /// The name of the field
+    name: Ident.Idx,
+    /// The type of the field's value
+    var_: Var,
+
+    /// A function to be passed into std.mem.sort to sort fields by name
+    pub fn sortByNameAsc(ident_store: *const Ident.Store, a: Self, b: Self) bool {
+        return Self.orderByName(ident_store, a, b) == .lt;
+    }
+
+    /// Get the ordering of how a compares to b
+    pub fn orderByName(store: *const Ident.Store, a: Self, b: Self) std.math.Order {
+        const a_text = store.getText(a.name);
+        const b_text = store.getText(b.name);
+        return std.mem.order(u8, a_text, b_text);
+    }
+
+    /// A safe multi list of record fields
+    pub const SafeMultiList = MkSafeMultiList(Self);
+
+    /// A safe list of record fields
+    pub const SafeList = MkSafeList(Self);
+};
+
+/// Two record fields
+pub const TwoRecordFields = struct {
+    a: RecordField,
+    b: RecordField,
+
+    /// A safe list of tag union fields
+    pub const SafeList = MkSafeList(@This());
+
+    /// A safe multi list of tag union fields
+    pub const SafeMultiList = MkSafeMultiList(@This());
+};
+
+// tag unions //
+
+/// Represents a tag union
+pub const TagUnion = struct {
+    tags: Tag.SafeMultiList.Range,
+    ext: Var,
+};
+
+/// A tag entry in a tag union row
+pub const Tag = struct {
+    /// The name of the tag (e.g. "Ok", "Err")
+    name: Ident.Idx,
+
+    /// A list of argument types for the tag (0 = no payload)
+    args: Var.SafeList.Range,
+
+    const Self = @This();
+
+    /// A function to be passed into std.mem.sort to sort fields by name
+    pub fn sortByNameAsc(ident_store: *const Ident.Store, a: Self, b: Self) bool {
+        return Self.orderByName(ident_store, a, b) == .lt;
+    }
+
+    /// Get the ordering of how a compares to b
+    pub fn orderByName(store: *const Ident.Store, a: Self, b: Self) std.math.Order {
+        const a_text = store.getText(a.name);
+        const b_text = store.getText(b.name);
+        return std.mem.order(u8, a_text, b_text);
+    }
+
+    /// A safe list of tags
+    pub const SafeList = MkSafeList(@This());
+
+    /// A safe multi list of tags
+    pub const SafeMultiList = MkSafeMultiList(@This());
+};
+
+/// Two tag union fields
+pub const TwoTags = struct {
+    a: Tag,
+    b: Tag,
+
+    /// A safe list of tag union fields
+    pub const SafeList = MkSafeList(@This());
+
+    /// A safe multi list of tag union fields
+    pub const SafeMultiList = MkSafeMultiList(@This());
+};
+
+// content //
+
+/// Information about a numeric literal for from_numeral constraint checking
+///
+/// Stores the parsed numeric value and metadata needed to validate conversion
+/// to a specific numeric type at compile-time.
+pub const NumeralInfo = struct {
+    /// The parsed numeric value stored as raw bytes
+    /// For fractional literals, this is scaled by 10^18 (Dec representation)
+    bytes: [16]u8,
+
+    /// Whether the original literal was stored as u128 (for large unsigned values)
+    is_u128: bool,
+
+    /// Whether the literal was negative
+    is_negative: bool,
+
+    /// Whether the literal had a decimal point
+    is_fractional: bool,
+
+    /// Whether exact source digits can be represented by Dec.
+    /// Null means the literal was stored in a compact representation, or the
+    /// checker did not need exact Dec range facts for it.
+    fits_dec: ?bool,
+
+    /// Representation requirements for fractional literals.
+    frac_requirements: ?FracRequirements = null,
+
+    /// Source region for error reporting
+    region: base.Region,
+
+    /// Whether this literal had an explicit type suffix such as `12.Str`.
+    explicit_suffix: bool = false,
+
+    /// Get the value as i128 (may overflow for large u128 values)
+    pub fn toI128(self: NumeralInfo) i128 {
+        return @bitCast(self.bytes);
+    }
+
+    /// Get the value as u128
+    pub fn toU128(self: NumeralInfo) u128 {
+        return @bitCast(self.bytes);
+    }
+
+    /// Create from an i128 value
+    pub fn fromI128(val: i128, is_negative: bool, is_fractional: bool, region: base.Region) NumeralInfo {
+        return .{
+            .bytes = @bitCast(val),
+            .is_u128 = false,
+            .is_negative = is_negative,
+            .is_fractional = is_fractional,
+            .fits_dec = null,
+            .frac_requirements = null,
+            .region = region,
+            .explicit_suffix = false,
+        };
+    }
+
+    /// Create from a u128 value
+    pub fn fromU128(val: u128, is_fractional: bool, region: base.Region) NumeralInfo {
+        return .{
+            .bytes = @bitCast(val),
+            .is_u128 = true,
+            .is_negative = false, // u128 values are never negative
+            .is_fractional = is_fractional,
+            .fits_dec = null,
+            .frac_requirements = null,
+            .region = region,
+            .explicit_suffix = false,
+        };
+    }
+
+    /// Create metadata for a literal whose exact digits are stored outside the
+    /// type store. Type checking only needs sign, fractional-ness, and region;
+    /// lowering consumes the recorded digit bytes.
+    pub fn fromExact(is_negative: bool, is_fractional: bool, fits_dec: ?bool, region: base.Region) NumeralInfo {
+        return .{
+            .bytes = [_]u8{0} ** 16,
+            .is_u128 = false,
+            .is_negative = is_negative,
+            .is_fractional = is_fractional,
+            .fits_dec = fits_dec,
+            .frac_requirements = if (is_fractional and fits_dec != null)
+                .{ .fits_in_f32 = true, .fits_in_dec = fits_dec.? }
+            else
+                null,
+            .region = region,
+            .explicit_suffix = false,
+        };
+    }
+};
+
+/// Represents a static dispatch constraints on a variable
+///
+/// sort  : List(a) -> List(a) where [a.ord : a -> Ord]
+///                                   ^^^^^^^^^^^^^^^
+pub const StaticDispatchConstraint = struct {
+    const Self = @This();
+
+    /// the dispatch fn name
+    fn_name: Ident.Idx,
+    /// the dispatch fn var, a function
+    fn_var: Var,
+    /// the origin of this constraint (operator, method call, where clause, or
+    /// literal). Kind-specific payloads (binop negation, literal info) live
+    /// *inside* the variant, so they can't exist without or apart from it.
+    origin: Origin,
+
+    /// The kinds of literal that desugar to open literal-conversion constraints.
+    /// Adding a variant makes every kind-keyed `switch` fail to compile until
+    /// handled — the exhaustiveness *is* the checklist.
+    pub const LiteralKind = enum(u4) {
+        numeral, // numeric literal, dispatches `from_numeral`
+        quote, // string literal, dispatches `from_quote`
+        interpolation, // interpolated string literal, dispatches `from_interpolation`
+    };
+
+    /// The per-kind payload carried by a literal-conversion origin. The payload can't
+    /// exist without its kind, nor a literal-origin without its payload.
+    pub const LiteralInfo = union(LiteralKind) {
+        numeral: NumeralInfo,
+        /// No payload here; a string literal's bytes live in the dispatch plan,
+        /// not the type store.
+        quote,
+        /// Interpolated string literals carry no payload here either; like
+        /// quotes they default to Str.
+        interpolation,
+    };
+
+    /// Tracks where a static dispatch constraint originated from
+    pub const Origin = union(enum) {
+        /// From binary operator desugaring (e.g., +, -, *). `negated` is true when
+        /// the source operator was `!=` rather than `==`.
+        desugared_binop: struct { negated: bool },
+        desugared_unaryop, // From uniary operator desugaring (e.g., !)
+        method_call, // From .method() syntax
+        /// From a where clause in a type annotation. `body_required` is true when
+        /// the originating scheme's body provably forces this method: during the
+        /// scheme's own check a body dispatch of this method matched and unified
+        /// against this where-clause. It distinguishes a contract the
+        /// implementation actually dispatches (so an unpinnable instantiated
+        /// receiver is a genuine ambiguity) from a phantom contract the body never
+        /// uses (which stays a valid polymorphic signature).
+        where_clause: struct { body_required: bool = false },
+        from_literal: LiteralInfo, // From a literal conversion (from_numeral, from_quote, or from_interpolation)
+
+        /// The numeral payload, if this origin is a numeric literal conversion;
+        /// null otherwise.
+        pub fn numeralInfo(self: Origin) ?NumeralInfo {
+            return switch (self) {
+                .from_literal => |lit| switch (lit) {
+                    .numeral => |info| info,
+                    .quote => null,
+                    .interpolation => null,
+                },
+                else => null,
+            };
+        }
+
+        /// The literal kind, if this origin is a literal conversion; null otherwise.
+        pub fn literalKind(self: Origin) ?LiteralKind {
+            return switch (self) {
+                .from_literal => |lit| lit,
+                else => null,
+            };
+        }
+
+        /// Whether this is a `desugared_binop` whose source operator was `!=`
+        /// rather than `==`; false otherwise.
+        pub fn binopNegated(self: Origin) bool {
+            return switch (self) {
+                .desugared_binop => |binop| binop.negated,
+                else => false,
+            };
+        }
+    };
+
+    /// A safe list of static dispatch constraints
+    pub const SafeList = MkSafeList(Self);
+
+    /// A safe multi list of static dispatch constraints
+    pub const SafeMultiList = MkSafeMultiList(Self);
+
+    /// A function to be passed into std.mem.sort to sort fields by name
+    pub fn sortByFnNameAsc(ident_store: *const Ident.Store, a: Self, b: Self) bool {
+        return Self.orderByFnName(ident_store, a, b) == .lt;
+    }
+
+    /// Get the ordering of how a compares to b
+    pub fn orderByFnName(store: *const Ident.Store, a: Self, b: Self) std.math.Order {
+        const a_text = store.getText(a.fn_name);
+        const b_text = store.getText(b.fn_name);
+        return std.mem.order(u8, a_text, b_text);
+    }
+
+    /// The literal kind a flex var defaults to when it carries `from_literal`
+    /// constraints, by fixed precedence: numeral > quote > interpolation. Single
+    /// source of truth for the tie-break used by the checker (`varLiteralKind`),
+    /// the canonical-key builder (`flexLiteralDefaultKind`), and the mono
+    /// default-phase scan (`numericDefaultPhaseForConstraints`) — they MUST agree,
+    /// or mirror-image programs get different keys/diagnostics.
+    pub fn dominantLiteralKind(constraints: []const StaticDispatchConstraint) ?LiteralKind {
+        var has_quote = false;
+        var has_interpolation = false;
+        for (constraints) |constraint| {
+            switch (constraint.origin) {
+                .from_literal => |lit| switch (lit) {
+                    .numeral => return .numeral,
+                    .quote => has_quote = true,
+                    .interpolation => has_interpolation = true,
+                },
+                else => {},
+            }
+        }
+        return if (has_quote) .quote else if (has_interpolation) .interpolation else null;
+    }
+};
+
+/// Two record fields
+pub const TwoStaticDispatchConstraints = struct {
+    a: StaticDispatchConstraint,
+    b: StaticDispatchConstraint,
+
+    /// A safe list of tag union fields
+    pub const SafeList = MkSafeList(@This());
+
+    /// A safe multi list of tag union fields
+    pub const SafeMultiList = MkSafeMultiList(@This());
+};
+
+/// Polarity of a type, or roughly, what side of an arrow it appears on.
+pub const Polarity = enum {
+    /// A type that appears in negative/input position
+    neg,
+    /// A type that appears in positive/output position
+    pos,
+
+    pub const lhs = Polarity.neg;
+    pub const rhs = Polarity.pos;
+};

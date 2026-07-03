@@ -1,0 +1,12 @@
+version: 2
+updates:
+  - package-ecosystem: "nix"
+    # if the flake.nix file is moved from ./src/flake.nix, or if other nix files end up in the root, this path should be updated
+    directory: "/src"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:00"
+      timezone: "Europe/Brussels"
+    # Disable all version updates, only critical security updates will be submitted
+    open-pull-requests-limit: 0

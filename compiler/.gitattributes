@@ -1,0 +1,6 @@
+# Require roc files to be checked out with Unix line endings, even on windows
+*.roc  text eol=lf
+* text=auto eol=lf
+
+# Mark snapshot files as generated to collapse them by default in GitHub
+src/snapshots/* linguist-generated=true

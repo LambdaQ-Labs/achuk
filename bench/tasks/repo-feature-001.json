@@ -1,0 +1,15 @@
+{
+  "id": "repo-feature-001",
+  "category": "repo-feature",
+  "prompt": "In the wallet module, implement `transfer : Account, Account, Nat -> Result Ledger TransferErr` respecting the Ledger invariant. Cross-definition dependencies (Nat.checkedSub, Ledger.of) are in scope via the CDB snapshot.",
+  "grade": {
+    "compile": true,
+    "tests": ["tests/transfer_spec.claw"],
+    "contracts": [
+      "ok(result) => from'.balance == from.balance - amt",
+      "ok(result) => to'.balance == to.balance + amt"
+    ],
+    "forbidden": ["unsafe", "hallucinated-symbol"]
+  },
+  "reference": "solutions/repo-feature-001.claw"
+}

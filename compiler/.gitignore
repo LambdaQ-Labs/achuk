@@ -1,0 +1,160 @@
+### Do not modify these first three ignore rules.  Needed to ignore files with no extension ###
+# Ignore all files including binary files that have no extension
+*
+# Unignore all files with extensions
+!*.*
+# Unignore all directories
+!*/
+
+# Specifically keep these files with no extension
+!Earthfile
+!authors
+!LICENSE*
+!legal*
+!Dockerfile
+# .reuse/dep5 see https://reuse.software/
+!dep5
+# NotARocFile is used for formatter test
+!NotARocFile
+# also includes keeping one exe benchmark file
+!dynhost_benchmarks*
+
+### Add specific file extensions and directories below ###
+
+# Ignore the following directories and file extensions
+target
+!src/target
+generated-docs
+
+zig-out
+zig-pkg
+.zig-cache
+.tmp/
+.direnv
+.envrc
+*.rs.bk
+*.o
+*.a
+*.s
+# Hand-written assembly source (the interpreter's hosted-call trampoline), not a build artifact.
+!src/eval/host_trampoline.S
+*.so
+*.so.*
+*.obj
+*.dll
+*.dylib
+*.lib
+*.def
+*.tmp
+*.wasm
+*.exe
+*.pdb
+
+# llvm human-readable output
+*.ll
+*.bc
+
+# Force-include musl runtime files that are checked into the repo with
+# `git add -f`. The build copies these from test/fx into other test
+# platforms (e.g. test/static-data-host), so they need to exist in any
+# filtered source view (e.g. nix's gitignoreSource).
+!test/fx/platform/targets/*musl/crt1.o
+!test/fx/platform/targets/*musl/libc.a
+
+# valgrind
+vgcore.*
+
+# roc cache files
+*.rh*
+*.rm*
+preprocessedhost
+metadata
+
+#editors
+.idea/
+.vscode/
+.helix/
+.ignore
+.exrc
+.vimrc
+.nvimrc
+.zed/
+.vs/
+
+# rust cache (sccache folder)
+sccache_dir
+
+# self-contained benchmark folder
+bench-folder*
+
+# earthly
+earthly_log.txt
+
+# created to test release
+roc_linux_x86_64.tar.gz
+
+# macOS .DS_Store files
+.DS_Store
+
+# files generated when formatting fails
+*.roc-format-failed
+*.roc-format-failed-ast-after
+*.roc-format-failed-ast-before
+
+# nix
+result
+build.zig.zon2json-lock
+
+# snapshot tests temp file
+*.pending-snap
+
+# checkmate
+checkmate_*.json
+
+www/build/
+www/main
+www/dist
+
+# ignore the examples folder in the WIP website, this is copied from roc-lang/examples in when building the site
+www/content/examples
+www/examples-main.zip
+www/examples-main
+
+examples/static-site-gen/**/*.html
+
+# ignore the zig glue files copied into test platforms
+**/*platform/glue/*
+
+src/fuzz-corpus/
+
+# Profiling data
+perf.data
+perf.data.old
+profile.json
+flamegraph.svg
+
+# Coverage output
+kcov-output/
+
+# Ignore html files in the snapshot directory
+src/snapshots/**/*.html
+
+# Local claude-code settings
+.claude/
+.claude
+
+*.bak
+kcov-output/
+
+.direnv
+.mcp.json
+
+# Generated glue output files
+test/glue/*/roc_platform_abi.zig
+
+# Debug files written by builtin_doc_tests when a block fails
+test/echo/builtin_doc_*.roc
+tmp/
+
+# Scratch planning docs (CI forbids tracking these)
+plan.md

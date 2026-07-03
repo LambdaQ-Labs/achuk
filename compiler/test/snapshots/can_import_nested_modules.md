@@ -1,0 +1,418 @@
+# META
+~~~ini
+description=Nested module qualification
+type=snippet
+~~~
+# SOURCE
+~~~roc
+import json.Parser.Config
+import http.Client.Auth as HttpAuth
+import utils.String.Format exposing [padLeft]
+
+# Test multi-level type qualification
+parseConfig : Config.Settings -> Str
+parseConfig = |settings| Config.toString(settings)
+
+# Test multi-level value qualification
+authenticate : Str, Str -> HttpAuth.Token
+authenticate = |user, pass| HttpAuth.login(user, pass)
+
+# Test deeply nested qualification
+processData : Config.Parser.Advanced, Str -> Try(Str, Config.Parser.Error)
+processData = |advancedConfig, input|
+    Config.Parser.Advanced.parseWith(advancedConfig, input)
+
+# Test mixed qualification (exposed item + qualified)
+formatOutput : Str -> Str
+formatOutput = |text| padLeft(text, Config.defaultPadding)
+
+# Test qualified type in function signature
+validateAuth : HttpAuth.Credentials -> Try(HttpAuth.Token, HttpAuth.Error)
+validateAuth = |creds| HttpAuth.validate(creds)
+~~~
+# EXPECTED
+MODULE NOT IMPORTED - can_import_nested_modules.md:6:15:6:30
+DOES NOT EXIST - can_import_nested_modules.md:7:26:7:41
+MODULE NOT FOUND - can_import_nested_modules.md:10:36:10:42
+NAME NOT IN SCOPE - can_import_nested_modules.md:11:29:11:43
+MODULE NOT IMPORTED - can_import_nested_modules.md:14:15:14:37
+MODULE NOT IMPORTED - can_import_nested_modules.md:14:55:14:74
+DOES NOT EXIST - can_import_nested_modules.md:16:5:16:37
+NAME NOT IN SCOPE - can_import_nested_modules.md:20:23:20:30
+DOES NOT EXIST - can_import_nested_modules.md:20:37:20:58
+MODULE NOT FOUND - can_import_nested_modules.md:23:24:23:36
+MODULE NOT FOUND - can_import_nested_modules.md:23:52:23:58
+MODULE NOT FOUND - can_import_nested_modules.md:23:68:23:74
+NAME NOT IN SCOPE - can_import_nested_modules.md:24:24:24:41
+# PROBLEMS
+
+┌─────────────────────┐
+│ MODULE NOT IMPORTED ├─ There is no module with the name `Config` imported ──┐
+└┬────────────────────┘  into this Roc file.                                  │
+ │                                                                            │
+ │  parseConfig : Config.Settings -> Str                                      │
+ │                ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾                                             │
+ └───────────────────────────────────────── can_import_nested_modules.md:6:15 ┘
+
+
+
+┌────────────────┐
+│ DOES NOT EXIST ├─ `Config.toString` does not exist. ────────────────────────┐
+└┬───────────────┘                                                            │
+ │                                                                            │
+ │  parseConfig = |settings| Config.toString(settings)                        │
+ │                           ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾                                  │
+ └───────────────────────────────────────── can_import_nested_modules.md:7:26 ┘
+
+
+
+┌──────────────────┐
+│ MODULE NOT FOUND ├─ This `Token` type is declared to be in `http.Client`, ──┐
+└┬─────────────────┘  which does not exist.                                   │
+ │                                                                            │
+ │  authenticate : Str, Str -> HttpAuth.Token                                 │
+ │                                     ‾‾‾‾‾‾                                 │
+ └──────────────────────────────────────── can_import_nested_modules.md:10:36 ┘
+
+
+
+┌───────────────────┐
+│ NAME NOT IN SCOPE ├─ Nothing is named `login` in this scope. ───────────────┐
+└┬──────────────────┘                                                         │
+ │                                                                            │
+ │  authenticate = |user, pass| HttpAuth.login(user, pass)                    │
+ │                              ‾‾‾‾‾‾‾‾‾‾‾‾‾‾                                │
+ └──────────────────────────────────────── can_import_nested_modules.md:11:29 ┘
+
+    Is it misspelled, or is there an import missing?
+
+
+┌─────────────────────┐
+│ MODULE NOT IMPORTED ├─ There is no module with the name `Config.Parser` ────┐
+└┬────────────────────┘  imported into this Roc file.                         │
+ │                                                                            │
+ │  processData : Config.Parser.Advanced, Str -> Try(Str, Config.Parser.Error)│
+ │                ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾                                      │
+ └──────────────────────────────────────── can_import_nested_modules.md:14:15 ┘
+
+
+
+┌─────────────────────┐
+│ MODULE NOT IMPORTED ├─ There is no module with the name `Config.Parser` ────┐
+└┬────────────────────┘  imported into this Roc file.                         │
+ │                                                                            │
+ │  processData : Config.Parser.Advanced, Str -> Try(Str, Config.Parser.Error)│
+ │                                                        ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾ │
+ └──────────────────────────────────────── can_import_nested_modules.md:14:55 ┘
+
+
+
+┌────────────────┐
+│ DOES NOT EXIST ├─ `Config.Parser.Advanced.parseWith` does not exist. ───────┐
+└┬───────────────┘                                                            │
+ │                                                                            │
+ │  Config.Parser.Advanced.parseWith(advancedConfig, input)                   │
+ │  ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾                                          │
+ └───────────────────────────────────────── can_import_nested_modules.md:16:5 ┘
+
+
+
+┌───────────────────┐
+│ NAME NOT IN SCOPE ├─ Nothing is named `padLeft` in this scope. ─────────────┐
+└┬──────────────────┘                                                         │
+ │                                                                            │
+ │  formatOutput = |text| padLeft(text, Config.defaultPadding)                │
+ │                        ‾‾‾‾‾‾‾                                             │
+ └──────────────────────────────────────── can_import_nested_modules.md:20:23 ┘
+
+    Is it misspelled, or is there an import missing?
+
+
+┌────────────────┐
+│ DOES NOT EXIST ├─ `Config.defaultPadding` does not exist. ──────────────────┐
+└┬───────────────┘                                                            │
+ │                                                                            │
+ │  formatOutput = |text| padLeft(text, Config.defaultPadding)                │
+ │                                      ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾                 │
+ └──────────────────────────────────────── can_import_nested_modules.md:20:37 ┘
+
+
+
+┌──────────────────┐
+│ MODULE NOT FOUND ├─ This `Credentials` type is declared to be in ───────────┐
+└┬─────────────────┘  `http.Client`, which does not exist.                    │
+ │                                                                            │
+ │  validateAuth : HttpAuth.Credentials -> Try(HttpAuth.Token, HttpAuth.Error)│
+ │                         ‾‾‾‾‾‾‾‾‾‾‾‾                                       │
+ └──────────────────────────────────────── can_import_nested_modules.md:23:24 ┘
+
+
+
+┌──────────────────┐
+│ MODULE NOT FOUND ├─ This `Token` type is declared to be in `http.Client`, ──┐
+└┬─────────────────┘  which does not exist.                                   │
+ │                                                                            │
+ │  validateAuth : HttpAuth.Credentials -> Try(HttpAuth.Token, HttpAuth.Error)│
+ │                                                     ‾‾‾‾‾‾                 │
+ └──────────────────────────────────────── can_import_nested_modules.md:23:52 ┘
+
+
+
+┌──────────────────┐
+│ MODULE NOT FOUND ├─ This `Error` type is declared to be in `http.Client`, ──┐
+└┬─────────────────┘  which does not exist.                                   │
+ │                                                                            │
+ │  validateAuth : HttpAuth.Credentials -> Try(HttpAuth.Token, HttpAuth.Error)│
+ │                                                                     ‾‾‾‾‾‾ │
+ └──────────────────────────────────────── can_import_nested_modules.md:23:68 ┘
+
+
+
+┌───────────────────┐
+│ NAME NOT IN SCOPE ├─ Nothing is named `validate` in this scope. ────────────┐
+└┬──────────────────┘                                                         │
+ │                                                                            │
+ │  validateAuth = |creds| HttpAuth.validate(creds)                           │
+ │                         ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾                                  │
+ └──────────────────────────────────────── can_import_nested_modules.md:24:24 ┘
+
+    Is it misspelled, or is there an import missing?
+
+# TOKENS
+~~~zig
+KwImport,LowerIdent,NoSpaceDotUpperIdent,NoSpaceDotUpperIdent,
+KwImport,LowerIdent,NoSpaceDotUpperIdent,NoSpaceDotUpperIdent,KwAs,UpperIdent,
+KwImport,LowerIdent,NoSpaceDotUpperIdent,NoSpaceDotUpperIdent,KwExposing,OpenSquare,LowerIdent,CloseSquare,
+LowerIdent,OpColon,UpperIdent,NoSpaceDotUpperIdent,OpArrow,UpperIdent,
+LowerIdent,OpAssign,OpBar,LowerIdent,OpBar,UpperIdent,NoSpaceDotLowerIdent,NoSpaceOpenRound,LowerIdent,CloseRound,
+LowerIdent,OpColon,UpperIdent,Comma,UpperIdent,OpArrow,UpperIdent,NoSpaceDotUpperIdent,
+LowerIdent,OpAssign,OpBar,LowerIdent,Comma,LowerIdent,OpBar,UpperIdent,NoSpaceDotLowerIdent,NoSpaceOpenRound,LowerIdent,Comma,LowerIdent,CloseRound,
+LowerIdent,OpColon,UpperIdent,NoSpaceDotUpperIdent,NoSpaceDotUpperIdent,Comma,UpperIdent,OpArrow,UpperIdent,NoSpaceOpenRound,UpperIdent,Comma,UpperIdent,NoSpaceDotUpperIdent,NoSpaceDotUpperIdent,CloseRound,
+LowerIdent,OpAssign,OpBar,LowerIdent,Comma,LowerIdent,OpBar,
+UpperIdent,NoSpaceDotUpperIdent,NoSpaceDotUpperIdent,NoSpaceDotLowerIdent,NoSpaceOpenRound,LowerIdent,Comma,LowerIdent,CloseRound,
+LowerIdent,OpColon,UpperIdent,OpArrow,UpperIdent,
+LowerIdent,OpAssign,OpBar,LowerIdent,OpBar,LowerIdent,NoSpaceOpenRound,LowerIdent,Comma,UpperIdent,NoSpaceDotLowerIdent,CloseRound,
+LowerIdent,OpColon,UpperIdent,NoSpaceDotUpperIdent,OpArrow,UpperIdent,NoSpaceOpenRound,UpperIdent,NoSpaceDotUpperIdent,Comma,UpperIdent,NoSpaceDotUpperIdent,CloseRound,
+LowerIdent,OpAssign,OpBar,LowerIdent,OpBar,UpperIdent,NoSpaceDotLowerIdent,NoSpaceOpenRound,LowerIdent,CloseRound,
+EndOfFile,
+~~~
+# PARSE
+~~~clojure
+(file
+	(type-module)
+	(statements
+		(s-import (raw "json.Parser")
+			(exposing
+				(exposed-upper-ident (text "Config"))))
+		(s-import (raw "http.Client.Auth") (alias "HttpAuth"))
+		(s-import (raw "utils.String.Format")
+			(exposing
+				(exposed-lower-ident
+					(text "padLeft"))))
+		(s-type-anno (name "parseConfig")
+			(ty-fn
+				(ty (name "Config.Settings"))
+				(ty (name "Str"))))
+		(s-decl
+			(p-ident (raw "parseConfig"))
+			(e-lambda
+				(args
+					(p-ident (raw "settings")))
+				(e-apply
+					(e-ident (raw "Config.toString"))
+					(e-ident (raw "settings")))))
+		(s-type-anno (name "authenticate")
+			(ty-fn
+				(ty (name "Str"))
+				(ty (name "Str"))
+				(ty (name "HttpAuth.Token"))))
+		(s-decl
+			(p-ident (raw "authenticate"))
+			(e-lambda
+				(args
+					(p-ident (raw "user"))
+					(p-ident (raw "pass")))
+				(e-apply
+					(e-ident (raw "HttpAuth.login"))
+					(e-ident (raw "user"))
+					(e-ident (raw "pass")))))
+		(s-type-anno (name "processData")
+			(ty-fn
+				(ty (name "Config.Parser.Advanced"))
+				(ty (name "Str"))
+				(ty-apply
+					(ty (name "Try"))
+					(ty (name "Str"))
+					(ty (name "Config.Parser.Error")))))
+		(s-decl
+			(p-ident (raw "processData"))
+			(e-lambda
+				(args
+					(p-ident (raw "advancedConfig"))
+					(p-ident (raw "input")))
+				(e-apply
+					(e-ident (raw "Config.Parser.Advanced.parseWith"))
+					(e-ident (raw "advancedConfig"))
+					(e-ident (raw "input")))))
+		(s-type-anno (name "formatOutput")
+			(ty-fn
+				(ty (name "Str"))
+				(ty (name "Str"))))
+		(s-decl
+			(p-ident (raw "formatOutput"))
+			(e-lambda
+				(args
+					(p-ident (raw "text")))
+				(e-apply
+					(e-ident (raw "padLeft"))
+					(e-ident (raw "text"))
+					(e-ident (raw "Config.defaultPadding")))))
+		(s-type-anno (name "validateAuth")
+			(ty-fn
+				(ty (name "HttpAuth.Credentials"))
+				(ty-apply
+					(ty (name "Try"))
+					(ty (name "HttpAuth.Token"))
+					(ty (name "HttpAuth.Error")))))
+		(s-decl
+			(p-ident (raw "validateAuth"))
+			(e-lambda
+				(args
+					(p-ident (raw "creds")))
+				(e-apply
+					(e-ident (raw "HttpAuth.validate"))
+					(e-ident (raw "creds")))))))
+~~~
+# FORMATTED
+~~~roc
+import json.Parser exposing [Config]
+import http.Client.Auth as HttpAuth
+import utils.String.Format exposing [padLeft]
+
+# Test multi-level type qualification
+parseConfig : Config.Settings -> Str
+parseConfig = |settings| Config.toString(settings)
+
+# Test multi-level value qualification
+authenticate : Str, Str -> HttpAuth.Token
+authenticate = |user, pass| HttpAuth.login(user, pass)
+
+# Test deeply nested qualification
+processData : Config.Parser.Advanced, Str -> Try(Str, Config.Parser.Error)
+processData = |advancedConfig, input|
+	Config.Parser.Advanced.parseWith(advancedConfig, input)
+
+# Test mixed qualification (exposed item + qualified)
+formatOutput : Str -> Str
+formatOutput = |text| padLeft(text, Config.defaultPadding)
+
+# Test qualified type in function signature
+validateAuth : HttpAuth.Credentials -> Try(HttpAuth.Token, HttpAuth.Error)
+validateAuth = |creds| HttpAuth.validate(creds)
+~~~
+# CANONICALIZE
+~~~clojure
+(can-ir
+	(d-let
+		(p-assign (ident "parseConfig"))
+		(e-lambda
+			(args
+				(p-assign (ident "settings")))
+			(e-call
+				(e-runtime-error (tag "qualified_ident_does_not_exist"))
+				(e-lookup-local
+					(p-assign (ident "settings")))))
+		(annotation
+			(ty-fn (effectful false)
+				(ty-malformed)
+				(ty-lookup (name "Str") (builtin)))))
+	(d-let
+		(p-assign (ident "authenticate"))
+		(e-lambda
+			(args
+				(p-assign (ident "user"))
+				(p-assign (ident "pass")))
+			(e-call
+				(e-runtime-error (tag "ident_not_in_scope"))
+				(e-lookup-local
+					(p-assign (ident "user")))
+				(e-lookup-local
+					(p-assign (ident "pass")))))
+		(annotation
+			(ty-fn (effectful false)
+				(ty-lookup (name "Str") (builtin))
+				(ty-lookup (name "Str") (builtin))
+				(ty-malformed))))
+	(d-let
+		(p-assign (ident "processData"))
+		(e-lambda
+			(args
+				(p-assign (ident "advancedConfig"))
+				(p-assign (ident "input")))
+			(e-call
+				(e-runtime-error (tag "qualified_ident_does_not_exist"))
+				(e-lookup-local
+					(p-assign (ident "advancedConfig")))
+				(e-lookup-local
+					(p-assign (ident "input")))))
+		(annotation
+			(ty-fn (effectful false)
+				(ty-malformed)
+				(ty-lookup (name "Str") (builtin))
+				(ty-apply (name "Try") (builtin)
+					(ty-lookup (name "Str") (builtin))
+					(ty-malformed)))))
+	(d-let
+		(p-assign (ident "formatOutput"))
+		(e-lambda
+			(args
+				(p-assign (ident "text")))
+			(e-call
+				(e-runtime-error (tag "ident_not_in_scope"))
+				(e-lookup-local
+					(p-assign (ident "text")))
+				(e-runtime-error (tag "qualified_ident_does_not_exist"))))
+		(annotation
+			(ty-fn (effectful false)
+				(ty-lookup (name "Str") (builtin))
+				(ty-lookup (name "Str") (builtin)))))
+	(d-let
+		(p-assign (ident "validateAuth"))
+		(e-lambda
+			(args
+				(p-assign (ident "creds")))
+			(e-call
+				(e-runtime-error (tag "ident_not_in_scope"))
+				(e-lookup-local
+					(p-assign (ident "creds")))))
+		(annotation
+			(ty-fn (effectful false)
+				(ty-malformed)
+				(ty-apply (name "Try") (builtin)
+					(ty-malformed)
+					(ty-malformed)))))
+	(s-import (module "json.Parser")
+		(exposes
+			(exposed (name "Config") (wildcard false))))
+	(s-import (module "http.Client")
+		(exposes))
+	(s-import (module "utils.String")
+		(exposes
+			(exposed (name "padLeft") (wildcard false)))))
+~~~
+# TYPES
+~~~clojure
+(inferred-types
+	(defs
+		(patt (type "Error -> Str"))
+		(patt (type "Str, Str -> Error"))
+		(patt (type "Error, Str -> Try(Str, Error)"))
+		(patt (type "Str -> Str"))
+		(patt (type "Error -> Try(Error, Error)")))
+	(expressions
+		(expr (type "Error -> Str"))
+		(expr (type "Str, Str -> Error"))
+		(expr (type "Error, Str -> Try(Str, Error)"))
+		(expr (type "Str -> Str"))
+		(expr (type "Error -> Try(Error, Error)"))))
+~~~

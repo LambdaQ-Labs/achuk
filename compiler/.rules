@@ -1,0 +1,98 @@
+# Roc Compiler
+
+This repo contains the source code for the Roc compiler and related tools.
+
+## Git Usage
+
+**All use of git is strictly forbidden for diagnostic purposes.** Do not use git stash, git diff, git log, or any other git commands to investigate whether issues are pre-existing or to compare with previous states. Focus exclusively on fixing the current problem. Whether an issue existed before is irrelevant information.
+
+## Documentation
+
+Our approach is to review and update with each change. Quality documentation helps us understand quickly; however, this only works if we continuously improve and maintain it.
+
+The documentation is aimed at our compiler engineers who only need high-level detail - they are comfortable using precise technical terminology. Therefore, our documentation should be concise, focusing on the WHY and avoiding the WHAT or HOW -- we shouldn't include implementation details as we expect these to change frequently.
+
+Every `.zig` file should start with module documentation `//!` that describes the module's purpose.
+Every `src/` directory should have a `README.md` file that describes the directory's purpose.
+
+## Tests
+
+Roc uses two different test strategies to Verify Correctness, and Validate Behaviour.
+1. **Verify Correctness:** Where necessary, we add unit tests to ensure low-level or specific implementation details remain correct. These are written in `.zig` files using the `test` keyword alongside the code they are testing. These tests are typically limited in scope to a single function.
+2. **Validate Behaviour:** More commonly, we add snapshot tests to provide assurance that the compiler continues to behave as expected. Snapshot files `.md` concurrently exercise many parts of the compiler by presenting the output of each stage for a given snippet of Roc code. Unlike unit tests, this has relevant debug-level information depth and multiple-compiler stage breadth.
+
+When you are requested to add a test without a specific location, take some time to look around and find the best location for the test in the repo.
+
+### Common Commands
+
+- Run all Zig unit tests: `zig build run-test-zig`. To run a specific test: `zig build run-test-zig -- --test-filter "name of test"`. NEVER use the standard `zig test`, it does not work with our project.
+- Generate or update all snapshots files: `zig build snapshot`
+- Generate or update specific snapshot file: `zig build snapshot -- <file_path>`
+- Update EXPECTED from PROBLEMS in snapshot file: `zig build update-expected -- <file_path>`
+- To validate snapshots and run Zig unit tests: `zig build run-check-snapshots && zig build run-test-zig`.
+
+### Snapshot File Structure
+
+Each snapshot is a markdown file with the following key sections:
+
+- **META**: Contains `description` and `type`. The `type` can be `file`, `expr`, `statement`, `header`, or `repl`, depending on the scope of the test.
+- **SOURCE**: The Roc code being tested.
+- **EXPECTED**: Defines the expected outcome, which can be `NIL`, an error name, or specific output. This can be populated automatically using `zig build update-expected`.
+- **Generated Sections**: The tool automatically generates sections like `TOKENS`, `PARSE`, `CANONICALIZE`, `TYPES`, and `PROBLEMS`.
+
+### REPL Snapshots
+
+The `type=repl` snapshots are special tests for the Read-Eval-Print Loop functionality. They simulate interactive REPL sessions:
+
+- **SOURCE**: Contains REPL commands prefixed with `»`, one per line
+- **EXPECTED**: Contains the expected output for each command, separated by `---`
+- The REPL maintains state between commands within a single snapshot
+- Used to test type annotation display, expression evaluation, and error handling
+
+Example:
+```
+# SOURCE
+~~~roc
+» 42
+» "hello"
+» [1, 2, 3]
+~~~
+# EXPECTED
+42
+---
+"hello"
+---
+[1, 2, 3] : List(Num *)
+```
+
+### Best Practices for Creating Snapshots
+
+1.  **Focused Intent**: Each snapshot should test a single, specific compiler behaviour. This is useful for new features, error cases, edge cases, and regression prevention.
+2.  **Minimal Complexity**: Use the simplest possible code to demonstrate the behaviour you are testing. Consider using `...` ellipsis, which is valid syntax for "not implemented" and commonly used in examples.
+3.  **Clear Naming**: The file name should clearly describe the test's purpose (e.g., `can_list_type_mismatch.md` is better than `test1.md`).
+
+### Debugging with Snapshots
+
+Snapshots are powerful for debugging as they show the compiler's output at every stage:
+`SOURCE` -> `TOKENS` -> `PARSE` -> `CANONICALIZE` -> `TYPES`.
+
+The `PROBLEMS` section provides human-readable diagnostics. When you modify the compiler, run `zig build snapshot` and review the diffs to ensure any changes are intentional before they are committed to the repository.
+
+## Roc Language Syntax
+
+When writing Roc code in tests or examples, remember these syntax rules:
+
+- **Naming Convention**: Roc uses `snake_case` for identifiers, not `camelCase`
+- **Boolean Operators**: Use `and` and `or` keywords, not `&&` or `||`
+- **Lambda Syntax**: Anonymous functions use bars: `my_fn = |arg1, arg2| other_fn(arg1, arg2)`
+- **If Expressions**: The syntax is `if condition then_branch else else_branch` with no `then` keyword
+- **Blocks**: Use curly braces to define inline variables. The last expression in the block is its return value:
+  ```
+  my_fn = |arg1, arg2| {
+      inline = arg1
+      inline2 = other_fn(inline, arg2)
+      answer = inline + inline2
+
+      answer
+  }
+  ```

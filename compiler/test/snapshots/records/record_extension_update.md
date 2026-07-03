@@ -1,0 +1,47 @@
+# META
+~~~ini
+description=Record update syntax
+type=expr
+~~~
+# SOURCE
+~~~roc
+{ ..person, age: 31, active: True }
+~~~
+# EXPECTED
+NIL
+# PROBLEMS
+NIL
+# TOKENS
+~~~zig
+OpenCurly,DoubleDot,LowerIdent,Comma,LowerIdent,OpColon,Int,Comma,LowerIdent,OpColon,UpperIdent,CloseCurly,
+EndOfFile,
+~~~
+# PARSE
+~~~clojure
+(e-record
+	(ext
+		(e-ident (raw "person")))
+	(field (field "age")
+		(e-int (raw "31")))
+	(field (field "active")
+		(e-tag (raw "True"))))
+~~~
+# FORMATTED
+~~~roc
+NO CHANGE
+~~~
+# CANONICALIZE
+~~~clojure
+(e-record
+	(ext
+		(e-runtime-error (tag "ident_not_in_scope")))
+	(fields
+		(field (name "age")
+			(e-num (value "31")))
+		(field (name "active")
+			(e-tag (name "True")))))
+~~~
+# TYPES
+~~~clojure
+(expr (type "Error"))
+~~~

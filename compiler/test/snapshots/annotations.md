@@ -1,0 +1,328 @@
+# META
+~~~ini
+description=Example of a nominal tag union with a payload
+type=snippet
+~~~
+# SOURCE
+~~~roc
+Pair(a) := [Pair(a, a)]
+
+pairU64 : Pair(U64)
+pairU64 = Pair.Pair(1, 2)
+
+pairStr : Pair(Str)
+pairStr = Pair.Pair("hello", "world")
+
+mkPair : a, a -> Pair(a)
+mkPair = |x, y| Pair.Pair(x, y)
+
+succeedPairSameType : Pair(U8)
+succeedPairSameType = mkPair(1, 2)
+
+failPairDiffTypes : Pair(U8)
+failPairDiffTypes = mkPair("1", 2)
+
+failPairDiffTypes2 : Pair(U64)
+failPairDiffTypes2 = Pair.Pair(1, "str")
+
+mkPairInvalid : a, b -> Pair(a)
+mkPairInvalid = |x, y| Pair.Pair(x, y)
+~~~
+# EXPECTED
+TYPE MISMATCH - annotations.md:16:28:16:31
+TYPE MISMATCH - annotations.md:19:35:19:40
+INVALID NOMINAL TAG - annotations.md:22:24:22:39
+# PROBLEMS
+
+┌───────────────┐
+│ TYPE MISMATCH ├─ This string literal is being used where a non-string ──────┐
+└┬──────────────┘  type is needed.                                            │
+ │                                                                            │
+ │  failPairDiffTypes = mkPair("1", 2)                                        │
+ │                             ‾‾‾                                            │
+ └────────────────────────────────────────────────────── annotations.md:16:28 ┘
+
+    The type was determined to be:
+
+        U8
+
+
+┌───────────────┐
+│ TYPE MISMATCH ├─ This string literal is being used where a non-string ──────┐
+└┬──────────────┘  type is needed.                                            │
+ │                                                                            │
+ │  failPairDiffTypes2 = Pair.Pair(1, "str")                                  │
+ │                                    ‾‾‾‾‾                                   │
+ └────────────────────────────────────────────────────── annotations.md:19:35 ┘
+
+    The type was determined to be:
+
+        U64
+
+
+┌─────────────────────┐
+│ INVALID NOMINAL TAG ├─ I'm having trouble with this nominal tag. ───────────┐
+└┬────────────────────┘                                                       │
+ │                                                                            │
+ │  mkPairInvalid = |x, y| Pair.Pair(x, y)                                    │
+ │                         ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾                                    │
+ └────────────────────────────────────────────────────── annotations.md:22:24 ┘
+
+    The tag is:
+
+        Pair(a, b)
+
+    But the nominal type needs it to be:
+
+        Pair(a, a)
+
+# TOKENS
+~~~zig
+UpperIdent,NoSpaceOpenRound,LowerIdent,CloseRound,OpColonEqual,OpenSquare,UpperIdent,NoSpaceOpenRound,LowerIdent,Comma,LowerIdent,CloseRound,CloseSquare,
+LowerIdent,OpColon,UpperIdent,NoSpaceOpenRound,UpperIdent,CloseRound,
+LowerIdent,OpAssign,UpperIdent,NoSpaceDotUpperIdent,NoSpaceOpenRound,Int,Comma,Int,CloseRound,
+LowerIdent,OpColon,UpperIdent,NoSpaceOpenRound,UpperIdent,CloseRound,
+LowerIdent,OpAssign,UpperIdent,NoSpaceDotUpperIdent,NoSpaceOpenRound,StringStart,StringPart,StringEnd,Comma,StringStart,StringPart,StringEnd,CloseRound,
+LowerIdent,OpColon,LowerIdent,Comma,LowerIdent,OpArrow,UpperIdent,NoSpaceOpenRound,LowerIdent,CloseRound,
+LowerIdent,OpAssign,OpBar,LowerIdent,Comma,LowerIdent,OpBar,UpperIdent,NoSpaceDotUpperIdent,NoSpaceOpenRound,LowerIdent,Comma,LowerIdent,CloseRound,
+LowerIdent,OpColon,UpperIdent,NoSpaceOpenRound,UpperIdent,CloseRound,
+LowerIdent,OpAssign,LowerIdent,NoSpaceOpenRound,Int,Comma,Int,CloseRound,
+LowerIdent,OpColon,UpperIdent,NoSpaceOpenRound,UpperIdent,CloseRound,
+LowerIdent,OpAssign,LowerIdent,NoSpaceOpenRound,StringStart,StringPart,StringEnd,Comma,Int,CloseRound,
+LowerIdent,OpColon,UpperIdent,NoSpaceOpenRound,UpperIdent,CloseRound,
+LowerIdent,OpAssign,UpperIdent,NoSpaceDotUpperIdent,NoSpaceOpenRound,Int,Comma,StringStart,StringPart,StringEnd,CloseRound,
+LowerIdent,OpColon,LowerIdent,Comma,LowerIdent,OpArrow,UpperIdent,NoSpaceOpenRound,LowerIdent,CloseRound,
+LowerIdent,OpAssign,OpBar,LowerIdent,Comma,LowerIdent,OpBar,UpperIdent,NoSpaceDotUpperIdent,NoSpaceOpenRound,LowerIdent,Comma,LowerIdent,CloseRound,
+EndOfFile,
+~~~
+# PARSE
+~~~clojure
+(file
+	(type-module)
+	(statements
+		(s-type-decl
+			(header (name "Pair")
+				(args
+					(ty-var (raw "a"))))
+			(ty-tag-union
+				(tags
+					(ty-apply
+						(ty (name "Pair"))
+						(ty-var (raw "a"))
+						(ty-var (raw "a"))))))
+		(s-type-anno (name "pairU64")
+			(ty-apply
+				(ty (name "Pair"))
+				(ty (name "U64"))))
+		(s-decl
+			(p-ident (raw "pairU64"))
+			(e-apply
+				(e-tag (raw "Pair.Pair"))
+				(e-int (raw "1"))
+				(e-int (raw "2"))))
+		(s-type-anno (name "pairStr")
+			(ty-apply
+				(ty (name "Pair"))
+				(ty (name "Str"))))
+		(s-decl
+			(p-ident (raw "pairStr"))
+			(e-apply
+				(e-tag (raw "Pair.Pair"))
+				(e-string
+					(e-string-part (raw "hello")))
+				(e-string
+					(e-string-part (raw "world")))))
+		(s-type-anno (name "mkPair")
+			(ty-fn
+				(ty-var (raw "a"))
+				(ty-var (raw "a"))
+				(ty-apply
+					(ty (name "Pair"))
+					(ty-var (raw "a")))))
+		(s-decl
+			(p-ident (raw "mkPair"))
+			(e-lambda
+				(args
+					(p-ident (raw "x"))
+					(p-ident (raw "y")))
+				(e-apply
+					(e-tag (raw "Pair.Pair"))
+					(e-ident (raw "x"))
+					(e-ident (raw "y")))))
+		(s-type-anno (name "succeedPairSameType")
+			(ty-apply
+				(ty (name "Pair"))
+				(ty (name "U8"))))
+		(s-decl
+			(p-ident (raw "succeedPairSameType"))
+			(e-apply
+				(e-ident (raw "mkPair"))
+				(e-int (raw "1"))
+				(e-int (raw "2"))))
+		(s-type-anno (name "failPairDiffTypes")
+			(ty-apply
+				(ty (name "Pair"))
+				(ty (name "U8"))))
+		(s-decl
+			(p-ident (raw "failPairDiffTypes"))
+			(e-apply
+				(e-ident (raw "mkPair"))
+				(e-string
+					(e-string-part (raw "1")))
+				(e-int (raw "2"))))
+		(s-type-anno (name "failPairDiffTypes2")
+			(ty-apply
+				(ty (name "Pair"))
+				(ty (name "U64"))))
+		(s-decl
+			(p-ident (raw "failPairDiffTypes2"))
+			(e-apply
+				(e-tag (raw "Pair.Pair"))
+				(e-int (raw "1"))
+				(e-string
+					(e-string-part (raw "str")))))
+		(s-type-anno (name "mkPairInvalid")
+			(ty-fn
+				(ty-var (raw "a"))
+				(ty-var (raw "b"))
+				(ty-apply
+					(ty (name "Pair"))
+					(ty-var (raw "a")))))
+		(s-decl
+			(p-ident (raw "mkPairInvalid"))
+			(e-lambda
+				(args
+					(p-ident (raw "x"))
+					(p-ident (raw "y")))
+				(e-apply
+					(e-tag (raw "Pair.Pair"))
+					(e-ident (raw "x"))
+					(e-ident (raw "y")))))))
+~~~
+# FORMATTED
+~~~roc
+NO CHANGE
+~~~
+# CANONICALIZE
+~~~clojure
+(can-ir
+	(d-let
+		(p-assign (ident "pairU64"))
+		(e-nominal (nominal "Pair")
+			(e-tag (name "Pair")
+				(args
+					(e-num (value "1"))
+					(e-num (value "2")))))
+		(annotation
+			(ty-apply (name "Pair") (local)
+				(ty-lookup (name "U64") (builtin)))))
+	(d-let
+		(p-assign (ident "pairStr"))
+		(e-nominal (nominal "Pair")
+			(e-tag (name "Pair")
+				(args
+					(e-string
+						(e-literal (string "hello")))
+					(e-string
+						(e-literal (string "world"))))))
+		(annotation
+			(ty-apply (name "Pair") (local)
+				(ty-lookup (name "Str") (builtin)))))
+	(d-let
+		(p-assign (ident "mkPair"))
+		(e-lambda
+			(args
+				(p-assign (ident "x"))
+				(p-assign (ident "y")))
+			(e-nominal (nominal "Pair")
+				(e-tag (name "Pair")
+					(args
+						(e-lookup-local
+							(p-assign (ident "x")))
+						(e-lookup-local
+							(p-assign (ident "y")))))))
+		(annotation
+			(ty-fn (effectful false)
+				(ty-rigid-var (name "a"))
+				(ty-rigid-var-lookup (ty-rigid-var (name "a")))
+				(ty-apply (name "Pair") (local)
+					(ty-rigid-var-lookup (ty-rigid-var (name "a")))))))
+	(d-let
+		(p-assign (ident "succeedPairSameType"))
+		(e-call (constraint-fn-var 426)
+			(e-lookup-local
+				(p-assign (ident "mkPair")))
+			(e-num (value "1"))
+			(e-num (value "2")))
+		(annotation
+			(ty-apply (name "Pair") (local)
+				(ty-lookup (name "U8") (builtin)))))
+	(d-let
+		(p-assign (ident "failPairDiffTypes"))
+		(e-call (constraint-fn-var 562)
+			(e-lookup-local
+				(p-assign (ident "mkPair")))
+			(e-string
+				(e-literal (string "1")))
+			(e-num (value "2")))
+		(annotation
+			(ty-apply (name "Pair") (local)
+				(ty-lookup (name "U8") (builtin)))))
+	(d-let
+		(p-assign (ident "failPairDiffTypes2"))
+		(e-nominal (nominal "Pair")
+			(e-tag (name "Pair")
+				(args
+					(e-num (value "1"))
+					(e-string
+						(e-literal (string "str"))))))
+		(annotation
+			(ty-apply (name "Pair") (local)
+				(ty-lookup (name "U64") (builtin)))))
+	(d-let
+		(p-assign (ident "mkPairInvalid"))
+		(e-lambda
+			(args
+				(p-assign (ident "x"))
+				(p-assign (ident "y")))
+			(e-runtime-error (tag "erroneous_value_expr")))
+		(annotation
+			(ty-fn (effectful false)
+				(ty-rigid-var (name "a"))
+				(ty-rigid-var (name "b"))
+				(ty-apply (name "Pair") (local)
+					(ty-rigid-var-lookup (ty-rigid-var (name "a")))))))
+	(s-nominal-decl
+		(ty-header (name "Pair")
+			(ty-args
+				(ty-rigid-var (name "a"))))
+		(ty-tag-union
+			(ty-tag-name (name "Pair")
+				(ty-rigid-var-lookup (ty-rigid-var (name "a")))
+				(ty-rigid-var-lookup (ty-rigid-var (name "a")))))))
+~~~
+# TYPES
+~~~clojure
+(inferred-types
+	(defs
+		(patt (type "Pair(U64)"))
+		(patt (type "Pair(Str)"))
+		(patt (type "a, a -> Pair(a)"))
+		(patt (type "Pair(U8)"))
+		(patt (type "Pair(U8)"))
+		(patt (type "Pair(U64)"))
+		(patt (type "a, b -> Pair(a)")))
+	(type_decls
+		(nominal (type "Pair(a)")
+			(ty-header (name "Pair")
+				(ty-args
+					(ty-rigid-var (name "a"))))))
+	(expressions
+		(expr (type "Pair(U64)"))
+		(expr (type "Pair(Str)"))
+		(expr (type "a, a -> Pair(a)"))
+		(expr (type "Pair(U8)"))
+		(expr (type "Pair(U8)"))
+		(expr (type "Pair(U64)"))
+		(expr (type "a, b -> Pair(a)"))))
+~~~

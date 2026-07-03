@@ -1,0 +1,24 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/claw-core",
+    "cdb",
+    "diagnostics",
+    "constraint-server",
+    "bench/grader",
+]
+# compiler/ joins the workspace after the Roc vendor + rename pass (P0).
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+license = "UPL-1.0"
+repository = "https://github.com/lambdaq-labs/claw"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+blake3 = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+thiserror = "2"
+anyhow = "1"

@@ -1,0 +1,12 @@
+{
+  "id": "repo-feature-005",
+  "category": "repo-feature",
+  "prompt": "Implement `deposit : Account, Nat -> Account` that adds the amount to the account balance. Repository symbols are in scope.",
+  "scope": [
+    { "name": "Account.balance", "ty": "Account -> Nat" },
+    { "name": "Account.withBalance", "ty": "Account, Nat -> Account" },
+    { "name": "Nat.add", "ty": "Nat, Nat -> Nat" }
+  ],
+  "grade": { "compile": true, "tests": ["tests/deposit_spec.claw"], "contracts": ["result.balance == account.balance + amt"], "forbidden": ["hallucinated-symbol"] },
+  "reference": "solutions/repo-feature-005.claw"
+}

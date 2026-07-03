@@ -1,0 +1,11 @@
+{
+  "id": "translate-007",
+  "category": "translate",
+  "prompt": "Translate this Python to Claw:\n\ndef sign(n):\n    return 'zero' if n == 0 else 'pos'\n\nTarget: `sign : Nat -> Str`. Use only in-scope symbols.",
+  "scope": [
+    { "name": "Nat.isZero", "ty": "Nat -> Bool" },
+    { "name": "Bool.if", "ty": "Bool, a, a -> a" }
+  ],
+  "grade": { "compile": true, "tests": ["tests/sign_spec.claw"], "contracts": [], "forbidden": ["hallucinated-symbol"] },
+  "reference": "solutions/translate-007.claw"
+}

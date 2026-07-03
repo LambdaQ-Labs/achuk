@@ -1,0 +1,18 @@
+{
+  "id": "repo-feature-008",
+  "category": "repo-feature",
+  "prompt": "Implement `parsePort : Str -> Result Port ParseErr` — parse a decimal string and validate it is in 1..=65535. Use only in-scope symbols; `Str.toIntUnsafe` is deprecated, do not use it.",
+  "scope": [
+    { "name": "Str.toInt", "ty": "Str -> Result Nat ParseErr" },
+    { "name": "Nat.inRange", "ty": "Nat, Nat, Nat -> Bool" },
+    { "name": "Port.of", "ty": "Nat -> Port" },
+    { "name": "ParseErr.outOfRange", "ty": "ParseErr" },
+    { "name": "Result.andThen", "ty": "Result a e, (a -> Result b e) -> Result b e" },
+    { "name": "Result.ok", "ty": "a -> Result a e" },
+    { "name": "Result.err", "ty": "e -> Result a e" },
+    { "name": "Bool.if", "ty": "Bool, a, a -> a" },
+    { "name": "Str.toIntUnsafe", "ty": "Str -> Nat", "deprecated": true }
+  ],
+  "grade": { "compile": true, "tests": ["tests/parse_port_spec.claw"], "contracts": ["ok(result) => result >= 1", "ok(result) => result <= 65535"], "forbidden": ["hallucinated-symbol", "deprecated-symbol"] },
+  "reference": "solutions/repo-feature-008.claw"
+}

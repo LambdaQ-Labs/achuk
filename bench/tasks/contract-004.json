@@ -1,0 +1,15 @@
+{
+  "id": "contract-004",
+  "category": "contract",
+  "prompt": "Implement `reverse : List a -> List a` satisfying: length is preserved and reversing twice yields the original. You may reference a helper you also define.",
+  "scope": [
+    { "name": "List.uncons", "ty": "List a -> Maybe (Pair a (List a))" },
+    { "name": "Maybe.match", "ty": "Maybe a, (a -> b), b -> b" },
+    { "name": "Pair.first", "ty": "Pair a b -> a" },
+    { "name": "Pair.second", "ty": "Pair a b -> b" },
+    { "name": "List.cons", "ty": "a, List a -> List a" },
+    { "name": "List.empty", "ty": "List a" }
+  ],
+  "grade": { "compile": true, "tests": ["tests/reverse_spec.claw"], "contracts": ["List.len(result) == List.len(input)", "reverse(reverse(input)) == input"], "forbidden": ["hallucinated-symbol"] },
+  "reference": "solutions/contract-004.claw"
+}

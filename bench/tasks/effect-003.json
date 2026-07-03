@@ -1,0 +1,13 @@
+{
+  "id": "effect-003",
+  "category": "effect",
+  "prompt": "Implement `saveThenLoad : Store, Key, Value -> Task Value` — write the value, then read it back. Both ops are effectful; use only in-scope symbols.",
+  "scope": [
+    { "name": "Store.put", "ty": "Store, Key, Value -> Task Unit" },
+    { "name": "Store.get", "ty": "Store, Key -> Task Value" },
+    { "name": "Task.andThen", "ty": "Task a, (a -> Task b) -> Task b" },
+    { "name": "Task.ok", "ty": "a -> Task a" }
+  ],
+  "grade": { "compile": true, "tests": ["tests/save_load_spec.claw"], "contracts": [], "forbidden": ["hallucinated-symbol"] },
+  "reference": "solutions/effect-003.claw"
+}

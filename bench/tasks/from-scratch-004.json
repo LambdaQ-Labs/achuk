@@ -1,0 +1,14 @@
+{
+  "id": "from-scratch-004",
+  "category": "from-scratch",
+  "prompt": "Define `factorial : Nat -> Nat` recursively. You may reference `factorial` itself.",
+  "scope": [
+    { "name": "Nat.mul", "ty": "Nat, Nat -> Nat" },
+    { "name": "Nat.dec", "ty": "Nat -> Nat" },
+    { "name": "Nat.isZero", "ty": "Nat -> Bool" },
+    { "name": "Nat.one", "ty": "Nat" },
+    { "name": "Bool.if", "ty": "Bool, a, a -> a" }
+  ],
+  "grade": { "compile": true, "tests": ["tests/factorial_spec.claw"], "contracts": [], "forbidden": ["hallucinated-symbol"] },
+  "reference": "solutions/from-scratch-004.claw"
+}

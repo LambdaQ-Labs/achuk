@@ -1,0 +1,11 @@
+{
+  "id": "translate-006",
+  "category": "translate",
+  "prompt": "Translate this JavaScript to Claw:\n\nfunction count(xs, p) { return xs.filter(p).length; }\n\nTarget: `count : List a, (a -> Bool) -> Nat`. Use only in-scope symbols.",
+  "scope": [
+    { "name": "List.filter", "ty": "List a, (a -> Bool) -> List a" },
+    { "name": "List.len", "ty": "List a -> Nat" }
+  ],
+  "grade": { "compile": true, "tests": ["tests/count_spec.claw"], "contracts": [], "forbidden": ["hallucinated-symbol"] },
+  "reference": "solutions/translate-006.claw"
+}

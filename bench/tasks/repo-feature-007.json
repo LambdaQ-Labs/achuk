@@ -1,0 +1,15 @@
+{
+  "id": "repo-feature-007",
+  "category": "repo-feature",
+  "prompt": "Implement `sumList : List Nat -> Nat` recursively over head/tail; you may reference sumList itself. Use only in-scope symbols.",
+  "scope": [
+    { "name": "List.uncons", "ty": "List a -> Maybe (Pair a (List a))" },
+    { "name": "Maybe.match", "ty": "Maybe a, (a -> b), b -> b" },
+    { "name": "Pair.first", "ty": "Pair a b -> a" },
+    { "name": "Pair.second", "ty": "Pair a b -> b" },
+    { "name": "Nat.add", "ty": "Nat, Nat -> Nat" },
+    { "name": "Nat.zero", "ty": "Nat" }
+  ],
+  "grade": { "compile": true, "tests": ["tests/sum_list_spec.claw"], "contracts": [], "forbidden": ["hallucinated-symbol"] },
+  "reference": "solutions/repo-feature-007.claw"
+}

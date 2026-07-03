@@ -1,0 +1,12 @@
+{
+  "id": "effect-004",
+  "category": "effect",
+  "prompt": "Implement `notifyAll : List UserId, Message -> Task Unit` — send the message to each user id in order. Use only in-scope symbols; do not invent a batch API.",
+  "scope": [
+    { "name": "Notify.send", "ty": "UserId, Message -> Task Unit" },
+    { "name": "List.forEach", "ty": "List a, (a -> Task Unit) -> Task Unit" },
+    { "name": "Task.ok", "ty": "a -> Task a" }
+  ],
+  "grade": { "compile": true, "tests": ["tests/notify_all_spec.claw"], "contracts": [], "forbidden": ["hallucinated-symbol"] },
+  "reference": "solutions/effect-004.claw"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "repo-feature-006",
+  "category": "repo-feature",
+  "prompt": "Implement `renderUser : User -> Str` producing \"<name> <<email>>\". Repository accessors are in scope.",
+  "scope": [
+    { "name": "User.name", "ty": "User -> Str" },
+    { "name": "User.email", "ty": "User -> Str" },
+    { "name": "Str.concat", "ty": "Str, Str -> Str" }
+  ],
+  "grade": { "compile": true, "tests": ["tests/render_user_spec.claw"], "contracts": [], "forbidden": ["hallucinated-symbol"] },
+  "reference": "solutions/repo-feature-006.claw"
+}

@@ -20,7 +20,7 @@ use claw_cdb::Cdb;
 use claw_constraint::{legal_continuations, HoleContext, Mask};
 use claw_core::{parse::parse_type, Def, Hash};
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn main() {
     if let Err(e) = real_main() {
@@ -64,7 +64,7 @@ fn resolve_ref(cdb: &Cdb, r: &str) -> anyhow::Result<Hash> {
     Ok(h)
 }
 
-fn db_cmd(db_path: &PathBuf, args: &[String]) -> anyhow::Result<()> {
+fn db_cmd(db_path: &Path, args: &[String]) -> anyhow::Result<()> {
     let mut cdb = Cdb::open(db_path)?;
     match args.first().map(String::as_str) {
         Some("symbols") => {

@@ -11,6 +11,17 @@ use claw_cdb::Cdb;
 use claw_core::Def;
 use serde::{Deserialize, Serialize};
 
+/// A definition the model produced, optionally naming itself. The name
+/// lets a def reference itself (recursion) or its siblings without that
+/// being counted as a hallucination — they are being defined right here.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProducedDef {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(flatten)]
+    pub def: Def,
+}
+
 // ---------------------------------------------------------------------
 // Task schema (docs/benchmark-harness.md §2.2)
 // ---------------------------------------------------------------------
@@ -111,27 +122,34 @@ pub struct GradeResult {
 /// Grade produced definitions against a task, in the context of a CDB.
 ///
 /// Hallucination detection: (a) any `Ref(hash)` the CDB doesn't contain,
-/// (b) any free variable that no bound name resolves — both are references
-/// to code that does not exist.
+/// (b) any free variable that resolves neither to a CDB symbol nor to a
+/// name the model is defining in this same batch (so recursion and
+/// mutual reference are legal, not hallucinations).
 pub fn grade(
     task: &Task,
-    produced: &[Def],
+    produced: &[ProducedDef],
     cdb: &Cdb,
     retries_used: u32,
     tokens: u64,
 ) -> anyhow::Result<GradeResult> {
     let mut hallucinated: Vec<String> = Vec::new();
 
-    let known_names: std::collections::BTreeSet<String> =
+    let mut known_names: std::collections::BTreeSet<String> =
         cdb.symbols()?.into_iter().map(|(n, _)| n).collect();
+    // The names being defined right now are in scope for each other.
+    for pd in produced {
+        if let Some(n) = &pd.name {
+            known_names.insert(n.clone());
+        }
+    }
 
-    for def in produced {
-        for h in def.deps() {
+    for pd in produced {
+        for h in pd.def.deps() {
             if !cdb.contains_hash(&h)? {
                 hallucinated.push(format!("ref:{h}"));
             }
         }
-        for v in def.expr.free_vars() {
+        for v in pd.def.expr.free_vars() {
             if !known_names.contains(&v) {
                 hallucinated.push(format!("name:{v}"));
             }
@@ -191,6 +209,17 @@ mod tests {
         Type::Named(n.into())
     }
 
+    fn pd(def: Def) -> ProducedDef {
+        ProducedDef { name: None, def }
+    }
+
+    fn pd_named(name: &str, def: Def) -> ProducedDef {
+        ProducedDef {
+            name: Some(name.into()),
+            def,
+        }
+    }
+
     fn simple_task(forbidden: Vec<String>) -> Task {
         Task {
             id: "t-001".into(),
@@ -221,7 +250,7 @@ mod tests {
             },
             named("Nat"),
         );
-        let r = grade(&simple_task(vec![]), &[produced], &cdb, 0, 100).unwrap();
+        let r = grade(&simple_task(vec![]), &[pd(produced)], &cdb, 0, 100).unwrap();
         assert!(r.compiled);
         assert!(r.hallucinated_symbols.is_empty());
         assert!(r.pass);
@@ -240,7 +269,7 @@ mod tests {
         );
         let r = grade(
             &simple_task(vec!["hallucinated-symbol".into()]),
-            &[produced],
+            &[pd(produced)],
             &cdb,
             2,
             500,
@@ -264,9 +293,59 @@ mod tests {
             },
             named("Bytes"),
         );
-        let r = grade(&simple_task(vec![]), &[produced], &cdb, 0, 50).unwrap();
+        let r = grade(&simple_task(vec![]), &[pd(produced)], &cdb, 0, 50).unwrap();
         assert_eq!(r.hallucinated_symbols, vec!["name:generate_nonce"]);
         assert!(!r.pass);
+    }
+
+    #[test]
+    fn self_recursion_is_not_a_hallucination() {
+        // fac = \n -> ... fac ...  — a named def referencing itself is legal.
+        let cdb = Cdb::in_memory().unwrap();
+        let body = Def::new(
+            Expr::Lam {
+                params: vec!["n".into()],
+                body: Box::new(Expr::App {
+                    func: Box::new(Expr::Var("fac".into())),
+                    args: vec![Expr::Var("n".into())],
+                }),
+            },
+            Type::Fn(vec![named("Nat")], Box::new(named("Nat"))),
+        );
+        let r = grade(
+            &simple_task(vec!["hallucinated-symbol".into()]),
+            &[pd_named("fac", body)],
+            &cdb,
+            0,
+            50,
+        )
+        .unwrap();
+        assert!(
+            r.hallucinated_symbols.is_empty(),
+            "self-reference must be in scope"
+        );
+        assert!(r.compiled);
+    }
+
+    #[test]
+    fn mutual_recursion_across_batch_is_legal() {
+        // isEven references isOdd and vice-versa — both defined in the batch.
+        let cdb = Cdb::in_memory().unwrap();
+        let mk = |other: &str| {
+            Def::new(
+                Expr::App {
+                    func: Box::new(Expr::Var(other.into())),
+                    args: vec![],
+                },
+                named("Bool"),
+            )
+        };
+        let batch = [
+            pd_named("isEven", mk("isOdd")),
+            pd_named("isOdd", mk("isEven")),
+        ];
+        let r = grade(&simple_task(vec![]), &batch, &cdb, 0, 50).unwrap();
+        assert!(r.hallucinated_symbols.is_empty());
     }
 
     #[test]
@@ -275,7 +354,7 @@ mod tests {
         task.grade.tests = vec!["tests/spec.claw".into()];
         let cdb = Cdb::in_memory().unwrap();
         let produced = Def::new(Expr::Lit(Lit::Int(9)), named("Nat"));
-        let r = grade(&task, &[produced], &cdb, 0, 10).unwrap();
+        let r = grade(&task, &[pd(produced)], &cdb, 0, 10).unwrap();
         assert_eq!(r.tests_passed, (0, 1));
         assert!(!r.pass, "tasks with unexecuted oracles must not pass");
     }

@@ -11,9 +11,9 @@
 //! surface syntax replaces the JSON protocol when the compiler lands; the
 //! arms, retry loop, and reporting stay fixed.
 
-use claw_bench_grader::{grade, GradeResult, Task};
+use claw_bench_grader::{grade, GradeResult, ProducedDef, Task};
 use claw_constraint::{legal_continuations, HoleContext};
-use claw_core::{Def, Type};
+use claw_core::Type;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -203,14 +203,16 @@ impl Generate for HttpGenerator {
 const OUTPUT_PROTOCOL: &str = r#"
 Output ONLY a JSON array of definitions, no prose, no code fences.
 Definition schema (serde):
-  {"expr": <Expr>, "ty": <Type>, "effects": [], "deprecated": false, "doc": ""}
+  {"name": "myFn", "expr": <Expr>, "ty": <Type>, "effects": [], "deprecated": false, "doc": ""}
+"name" is the definition you are producing; it may reference itself
+(recursion) or a sibling definition in this same array.
 Expr: {"Var": "name"} | {"Ref": "hash"} | {"Lit": {"Int": 1}} | {"Lit": {"Str": "s"}}
     | {"Lam": {"params": ["x"], "body": <Expr>}}
     | {"App": {"func": <Expr>, "args": [<Expr>]}}
 Type: {"Named": "Nat"} | {"Var": "a"} | {"App": ["Result", [<Type>, <Type>]]}
     | {"Fn": [[<Type>], <Type>]}
-Reference in-scope symbols with {"Var": "<their name>"}.
-Do NOT invent symbols that are not in scope."#;
+Reference in-scope symbols (and your own "name"/siblings) with {"Var": "<name>"}.
+Do NOT invent symbols that are neither in scope nor defined in this array."#;
 
 pub fn build_prompt(task: &Task, arm: Arm, prior_feedback: &[String]) -> String {
     let mut p = String::new();
@@ -230,8 +232,10 @@ pub fn build_prompt(task: &Task, arm: Arm, prior_feedback: &[String]) -> String 
     p
 }
 
-/// Parse the model's output into definitions. Tolerates code fences.
-pub fn parse_output(raw: &str) -> anyhow::Result<Vec<Def>> {
+/// Parse the model's output into produced definitions. Tolerates code
+/// fences. The `name` field is optional so older name-less outputs still
+/// parse (they just can't self-reference).
+pub fn parse_output(raw: &str) -> anyhow::Result<Vec<ProducedDef>> {
     let cleaned = raw
         .trim()
         .trim_start_matches("```json")

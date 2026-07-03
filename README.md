@@ -17,7 +17,28 @@ Every prior AI-first language died on **training-data cold-start + ecosystem**, 
 
 ## Status
 
-**Pre-P0.** Scaffolding. Nothing builds yet. The first real milestone is the benchmark harness + a baseline number — see [`docs/benchmark-harness.md`](docs/benchmark-harness.md).
+**P0/P1 in progress — it builds and runs.**
+- Rust workspace: code-as-database (`claw-cdb`), constraint core + GBNF projection (`claw-constraint`), structured errors (`claw-diagnostics`), benchmark grader/runner with arms A0/A1/A2, `claw` CLI. ~55 tests green.
+- Vendored compiler (Roc fork, Zig): builds as `clawc`, accepts `.claw` files, fronted by `claw check|build|fmt|test|repl`.
+- 15 benchmark tasks; baseline runs need a model endpoint (`CLAW_MODEL_URL`).
+
+### Quickstart
+
+```sh
+cargo test --workspace          # the Claw toolchain crates
+cd compiler && zig build roc    # the compiler (-> zig-out/bin/clawc)
+
+# code-as-database
+cargo run -p claw-cli -- db symbols
+cargo run -p claw-cli -- db candidates "Nat, Nat -> a"
+cargo run -p claw-cli -- db mask "Nat, Nat -> a"     # legal symbols + GBNF
+
+# compiler passthrough
+cargo run -p claw-cli -- check examples/hello.claw
+
+# benchmark (needs CLAW_MODEL_URL / CLAW_MODEL_NAME / CLAW_MODEL_KEY)
+cargo run -p claw-bench-runner -- run --arm A1 --tasks bench/tasks
+```
 
 ## Repo layout
 

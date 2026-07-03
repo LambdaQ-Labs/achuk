@@ -161,7 +161,9 @@ pub fn collectAndSortHostedFunctions(env: *ModuleEnv) Allocator.Error!std.ArrayL
             // Strip the .roc extension from module name (e.g., "Stdout.roc" -> "Stdout")
             var module_name = env.module_name;
 
-            if (std.mem.endsWith(u8, module_name, ".roc")) {
+            if (std.mem.endsWith(u8, module_name, ".claw")) {
+                module_name = module_name[0 .. module_name.len - 5];
+            } else if (std.mem.endsWith(u8, module_name, ".roc")) {
                 module_name = module_name[0 .. module_name.len - 4];
             }
             const qualified_name = try std.fmt.allocPrint(env.gpa, "{s}.{s}", .{ module_name, local_name });

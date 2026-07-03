@@ -42,13 +42,42 @@ fn real_main() -> anyhow::Result<()> {
 
     match args.first().map(String::as_str) {
         Some("db") => db_cmd(&db_path, &args[1..]),
+        // Compiler passthrough: `claw check|build|fmt|test|repl <args>` runs
+        // the vendored compiler (clawc). CLAW_COMPILER overrides discovery.
+        Some(cmd @ ("check" | "build" | "fmt" | "test" | "repl")) => {
+            let status = std::process::Command::new(find_clawc()?)
+                .arg(cmd)
+                .args(&args[1..])
+                .status()?;
+            std::process::exit(status.code().unwrap_or(1));
+        }
         _ => {
             eprintln!(
-                "claw — the Claw toolchain\n\nusage:\n  claw [--db <file>] db <subcommand>\n\nsubcommands:\n  symbols | put | bind <name> <hash> | resolve <name>\n  candidates \"<type>\" | callers <ref> | deps <ref> | render <ref> | mask \"<type>\""
+                "claw — the Claw toolchain\n\nusage:\n  claw check|build|fmt|test|repl <file.claw>   (compiler)\n  claw [--db <file>] db <subcommand>           (code-as-database)\n\ndb subcommands:\n  symbols | put | bind <name> <hash> | resolve <name>\n  candidates \"<type>\" | callers <ref> | deps <ref> | render <ref> | mask \"<type>\""
             );
             std::process::exit(2);
         }
     }
+}
+
+/// Locate the vendored compiler binary. Order: $CLAW_COMPILER, then the
+/// monorepo default (compiler/zig-out/bin/clawc next to this binary's
+/// workspace), then PATH.
+fn find_clawc() -> anyhow::Result<PathBuf> {
+    if let Ok(p) = std::env::var("CLAW_COMPILER") {
+        return Ok(PathBuf::from(p));
+    }
+    // walk up from the current exe looking for compiler/zig-out/bin/clawc
+    if let Ok(mut dir) = std::env::current_exe() {
+        while dir.pop() {
+            let candidate = dir.join("compiler/zig-out/bin/clawc");
+            if candidate.exists() {
+                return Ok(candidate);
+            }
+        }
+    }
+    // PATH fallback
+    Ok(PathBuf::from("clawc"))
 }
 
 /// Resolve a CLI reference: try as bound name first, then as full hash.

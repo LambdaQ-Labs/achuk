@@ -389,7 +389,7 @@ pub const Watcher = struct {
     fn shouldEmitPath(self: *Watcher, path: []const u8, is_dir: bool) bool {
         if (is_dir) return false;
         return switch (self.event_filter) {
-            .roc_files => std.mem.endsWith(u8, path, ".roc"),
+            .roc_files => std.mem.endsWith(u8, path, ".roc") or std.mem.endsWith(u8, path, ".claw"),
             .all_files => true,
         };
     }

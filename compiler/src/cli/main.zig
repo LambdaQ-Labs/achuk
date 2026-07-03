@@ -5918,8 +5918,8 @@ fn resolvePlatformSpecToPaths(ctx: *CliCtx, platform_spec: []const u8, base_dir:
         } });
     };
 
-    // Platform spec should point to a .roc file
-    if (std.mem.endsWith(u8, resolved_path, ".roc")) {
+    // Platform spec should point to a .claw (or legacy .roc) file
+    if (std.mem.endsWith(u8, resolved_path, ".roc") or std.mem.endsWith(u8, resolved_path, ".claw")) {
         return PlatformPaths{
             .platform_source_path = ctx.arena.dupe(u8, resolved_path) catch {
                 return ctx.fail(.{ .file_read_failed = .{
@@ -6422,9 +6422,9 @@ pub fn rocBundle(ctx: *CliCtx, args: cli_args.BundleArgs) CliMainError!void {
         try file_paths.append(ctx.arena, path);
     }
 
-    // Find the first .roc file to use as entry point for module discovery
+    // Find the first .claw/.roc file to use as entry point for module discovery
     const first_roc_file: ?[]const u8 = for (paths_to_use) |path| {
-        if (std.mem.endsWith(u8, path, ".roc")) break path;
+        if (std.mem.endsWith(u8, path, ".roc") or std.mem.endsWith(u8, path, ".claw")) break path;
     } else null;
 
     // Use the Coordinator to discover all transitive module dependencies
@@ -12841,7 +12841,9 @@ fn generateDocs(
         try ctx.gpa.dupe(u8, std.fs.path.basename(std.fs.path.dirname(module_path) orelse "."))
     else blk: {
         const basename = std.fs.path.basename(module_path);
-        break :blk if (std.mem.endsWith(u8, basename, ".roc"))
+        break :blk if (std.mem.endsWith(u8, basename, ".claw"))
+            try ctx.gpa.dupe(u8, basename[0 .. basename.len - 5])
+        else if (std.mem.endsWith(u8, basename, ".roc"))
             try ctx.gpa.dupe(u8, basename[0 .. basename.len - 4])
         else
             try ctx.gpa.dupe(u8, basename);

@@ -34,7 +34,7 @@ Same 15 tasks. Same models. The only change: give the model Claw's code-as-datab
 
 > API hallucination: **−96% to −100%**, from the language alone. No fine-tuning. No bigger model. [Full methodology →](docs/baseline-2026-07-03.md)
 
-And with decode-time grammar constraints (arm A2), out-of-scope symbols hit a hard **structural zero** — proven by construction, not measured by luck.
+There's a stronger layer too: with decode-time grammar constraints, an out-of-scope **library API call is literally ungeneratable** — the symbol isn't in the model's grammar, so it can't be typed. (Bare unbound *locals* still need the typechecker; a context-free grammar can't tell a lambda param from a free var. We publish the [honest first A2 run](docs/baseline-2026-07-03.md), warts and all.)
 
 ## The idea
 

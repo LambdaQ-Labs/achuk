@@ -65,7 +65,7 @@ def main():
     cfg = SFTConfig(
         output_dir=args.out, num_train_epochs=args.epochs, learning_rate=args.lr,
         per_device_train_batch_size=args.batch, gradient_accumulation_steps=2,
-        logging_steps=10, save_strategy="epoch", bf16=True, max_length=1024,
+        logging_steps=10, save_strategy="epoch", bf16=True, max_seq_length=1024,
         report_to="none", dataset_text_field="text",
     )
     trainer = SFTTrainer(model=model, args=cfg, train_dataset=ds, peft_config=lora)

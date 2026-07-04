@@ -19,6 +19,14 @@ case "$os" in Darwin) os="macos" ;; Linux) os="linux" ;; *) echo "unsupported OS
 case "$arch" in arm64|aarch64) arch="arm64" ;; x86_64|amd64) arch="x64" ;; *) echo "unsupported arch: $arch" >&2; exit 1 ;; esac
 TARGET="$os-$arch"
 
+# Map the release target to a Zig target triple + the platform's target dir
+# (used to build the HTTP platform host from source, so it's never stale).
+case "$TARGET" in
+  macos-arm64) ZIG_TARGET="aarch64-macos"; PLAT_DIR="arm64mac" ;;
+  linux-x64)   ZIG_TARGET="x86_64-linux-musl"; PLAT_DIR="x64musl" ;;
+  *) echo "no platform-host mapping for $TARGET" >&2; exit 1 ;;
+esac
+
 echo ">> building Rust binaries (release)"
 cargo build --release --bin claw --bin claw-mcp --bin claw-lsp
 
@@ -35,12 +43,25 @@ cp compiler/zig-out/bin/clawc "$STAGE/bin/"
 cp compiler/zig-out/bin/snapshot "$STAGE/bin/"
 chmod +x "$STAGE/bin/"*
 
-# Bundled platforms (for `claw new --platform http|cli`). Prebuilt hosts are
-# macOS-only today; the Linux host is a roadmap item.
-echo ">> bundling platforms (http, cli)"
+# Bundled platforms (for `claw new --platform http|cli`). The HTTP host is
+# built from source for this target so the tarball always has a working host
+# (the prebuilt .a files are gitignored / may be stale or absent in CI).
+echo ">> bundling http platform (building host for $ZIG_TARGET)"
 mkdir -p "$STAGE/platforms"
 cp -R compiler/test/http-headers/platform "$STAGE/platforms/http"
-cp -R compiler/test/fx-open/platform "$STAGE/platforms/cli"
+mkdir -p "$STAGE/platforms/http/targets/$PLAT_DIR"
+( cd compiler/test/http-headers/platform \
+  && zig build-lib host.zig -target "$ZIG_TARGET" -O ReleaseSmall \
+       -femit-bin="$STAGE/platforms/http/targets/$PLAT_DIR/libhost.a" )
+
+# The cli (stdin/stdout) platform ships only if its prebuilt host exists for
+# this target (its host isn't a single self-contained file).
+if [ -f "compiler/test/fx-open/platform/targets/$PLAT_DIR/libhost.a" ]; then
+  echo ">> bundling cli platform"
+  cp -R compiler/test/fx-open/platform "$STAGE/platforms/cli"
+else
+  echo ">> skipping cli platform (no prebuilt host for $PLAT_DIR)"
+fi
 
 mkdir -p "$ROOT/dist"
 OUT="$ROOT/dist/claw-$VERSION-$TARGET.tar.gz"

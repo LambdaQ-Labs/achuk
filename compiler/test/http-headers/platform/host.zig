@@ -265,16 +265,20 @@ fn serverMain() c_int {
     rawWriteStdout(port_digits);
     rawWriteStdout("\n");
 
-    const client = acceptSocket(listener.fd) catch |err| return fail(err);
-    defer closeSocket(client);
+    // Serve requests in a loop until the process is stopped. Per-request
+    // errors close that connection and continue rather than killing the
+    // server, so a single malformed request can't take it down.
+    while (true) {
+        const client = acceptSocket(listener.fd) catch |err| return fail(err);
+        defer closeSocket(client);
 
-    var request_buffer: [request_buffer_size]u8 = undefined;
-    const request = receiveRequest(client, &request_buffer) catch |err| return fail(err);
+        var request_buffer: [request_buffer_size]u8 = undefined;
+        const request = receiveRequest(client, &request_buffer) catch continue;
 
-    const result = roc_main(RocStr.borrowed(request.header_block));
+        const result = roc_main(RocStr.borrowed(request.header_block));
 
-    sendResponse(client, result) catch |err| return fail(err);
-    return 0;
+        sendResponse(client, result) catch continue;
+    }
 }
 
 fn fail(err: anyerror) c_int {

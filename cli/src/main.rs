@@ -42,6 +42,9 @@ fn real_main() -> anyhow::Result<()> {
 
     match args.first().map(String::as_str) {
         Some("db") => db_cmd(&db_path, &args[1..]),
+        // Project model.
+        Some("new") => new_cmd(&args[1..]),
+        Some("run") => run_cmd(&args[1..]),
         // Compiler passthrough: `claw check|build|fmt|test|repl <args>` runs
         // the vendored compiler (clawc). CLAW_COMPILER overrides discovery.
         Some(cmd @ ("check" | "build" | "fmt" | "test" | "repl")) => {
@@ -60,11 +63,81 @@ fn real_main() -> anyhow::Result<()> {
         }
         _ => {
             eprintln!(
-                "claw — the Claw toolchain\n\nusage:\n  claw check|build|fmt|test|repl <file.claw>   (compiler)\n  claw emit-rust <defs.json>                    (transpile Def-JSON → Rust)\n  claw [--db <file>] corpus gen                 (synthetic SFT corpus → JSONL)\n  claw [--db <file>] db <subcommand>           (code-as-database)\n\ndb subcommands:\n  symbols | put | bind <name> <hash> | resolve <name> | ingest <file.claw>\n  candidates \"<type>\" | callers <ref> | deps <ref> | render <ref> | mask \"<type>\""
+                "claw — the Claw toolchain\n\nusage:\n  claw new <name>                              scaffold a new project\n  claw run [file.claw]                         run a program (default: main.claw)\n  claw build|check|fmt|test|repl <file.claw>   compiler passthrough\n  claw [--db <file>] db <subcommand>           code-as-database\n  claw emit-rust <defs.json>                    transpile Def-JSON → Rust\n  claw [--db <file>] corpus gen [--stdlib]      synthetic SFT corpus → JSONL\n\ndb subcommands:\n  symbols | put | bind <name> <hash> | resolve <name> | ingest <file.claw>\n  candidates \"<type>\" | callers <ref> | deps <ref> | render <ref> | mask \"<type>\""
             );
             std::process::exit(2);
         }
     }
+}
+
+/// `claw new <name>` — scaffold a runnable project.
+fn new_cmd(args: &[String]) -> anyhow::Result<()> {
+    let name = need(args, 0, "project name")?;
+    let dir = Path::new(name);
+    anyhow::ensure!(!dir.exists(), "`{name}` already exists");
+    std::fs::create_dir_all(dir)?;
+
+    std::fs::write(
+        dir.join("main.claw"),
+        "# Welcome to Claw. Run with `claw run`.\n\
+         greet = |who| \"Hello, ${who}!\"\n\n\
+         main! = |_args| {\n    \
+         echo!(greet(\"world\"))\n    \
+         Ok({})\n\
+         }\n",
+    )?;
+    std::fs::write(
+        dir.join("claw.toml"),
+        format!("[project]\nname = \"{name}\"\nversion = \"0.1.0\"\nentry = \"main.claw\"\n"),
+    )?;
+    std::fs::write(dir.join(".gitignore"), "/claw.cdb\n/dist\n*.o\n")?;
+    std::fs::write(
+        dir.join("README.md"),
+        format!("# {name}\n\nA Claw project.\n\n```sh\nclaw run\n```\n"),
+    )?;
+
+    eprintln!("created project `{name}`");
+    eprintln!("  cd {name} && claw run");
+    Ok(())
+}
+
+/// The project's entry file: an explicit arg, else `claw.toml`'s entry,
+/// else `main.claw`. Searches up from the cwd for `claw.toml`.
+fn entry_file(args: &[String]) -> PathBuf {
+    if let Some(f) = args.first() {
+        return PathBuf::from(f);
+    }
+    // walk up for claw.toml → use its dir + entry
+    if let Ok(mut dir) = std::env::current_dir() {
+        loop {
+            let toml = dir.join("claw.toml");
+            if toml.exists() {
+                let entry = std::fs::read_to_string(&toml)
+                    .ok()
+                    .and_then(|s| {
+                        s.lines()
+                            .find_map(|l| l.trim().strip_prefix("entry ="))
+                            .map(|v| v.trim().trim_matches('"').to_string())
+                    })
+                    .unwrap_or_else(|| "main.claw".into());
+                return dir.join(entry);
+            }
+            if !dir.pop() {
+                break;
+            }
+        }
+    }
+    PathBuf::from("main.claw")
+}
+
+/// `claw run [file]` — run a program via the compiler (default: main.claw).
+fn run_cmd(args: &[String]) -> anyhow::Result<()> {
+    let file = entry_file(args);
+    anyhow::ensure!(file.exists(), "no such file: {}", file.display());
+    let status = std::process::Command::new(find_clawc()?)
+        .arg(&file)
+        .status()?;
+    std::process::exit(status.code().unwrap_or(1));
 }
 
 /// `claw emit-rust <defs.json>` — read a JSON array of named definitions

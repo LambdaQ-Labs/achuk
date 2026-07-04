@@ -7,7 +7,7 @@
 //! once the implementation runs.
 
 use crate::eval::{eval_pred, Env, Value};
-use crate::{parse::parse_pred, Pred};
+use crate::Pred;
 
 /// One generated test case: an environment satisfying all preconditions.
 #[derive(Debug, Clone)]
@@ -58,20 +58,11 @@ pub fn generate_cases(vars: &[&str], bound: i64, requires: &[Pred]) -> Vec<Case>
         .collect()
 }
 
-/// Convenience: parse precondition strings then generate.
-pub fn generate_from_strings(
-    vars: &[&str],
-    bound: i64,
-    requires: &[&str],
-) -> Result<Vec<Case>, crate::ParseError> {
-    let preds: Result<Vec<Pred>, _> = requires.iter().map(|s| parse_pred(s)).collect();
-    Ok(generate_cases(vars, bound, &preds?))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::eval::Value;
+    use crate::parse::parse_pred;
 
     #[test]
     fn generates_full_grid_without_preconditions() {
@@ -82,7 +73,8 @@ mod tests {
     #[test]
     fn preconditions_filter_cases() {
         // require a <= b
-        let cases = generate_from_strings(&["a", "b"], 3, &["a <= b"]).unwrap();
+        let pre = vec![parse_pred("a <= b").unwrap()];
+        let cases = generate_cases(&["a", "b"], 3, &pre);
         assert!(cases.iter().all(|c| {
             let a = matches!(c.env.get("a"), Some(Value::Int(n)) if matches!(c.env.get("b"), Some(Value::Int(m)) if n <= m));
             a

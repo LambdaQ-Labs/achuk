@@ -427,6 +427,7 @@ mod tests {
                 name: "Nat.add".into(),
                 ty: "Nat, Nat -> Nat".into(),
                 deprecated: false,
+                effects: Vec::new(),
             }],
             params: vec![],
             grade: GradeSpec {

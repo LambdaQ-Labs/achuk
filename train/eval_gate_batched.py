@@ -52,21 +52,46 @@ def vars_of(x):
     return o
 
 
+def expr_vars(defs):
+    """Var names from each def's EXPR only — Type::Var serializes as
+    {"Var": "a"} too, so walking "ty" misreads generics as references."""
+    out = []
+    for d in (defs if isinstance(defs, list) else [defs]):
+        if isinstance(d, dict):
+            out += vars_of(d.get("expr"))
+    return out
+
+
 def check(raw, scope):
+    """(valid_json, halluc_free, effects_sound) for one completion."""
     try:
         j = json.loads(raw.strip().strip('`').replace('json', '', 1).strip())
     except Exception:
-        return (False, False)
-    names = set(n for n, _ in scope)
-    hall = [v for v in vars_of(j) if not re.match(r'^p\d+$', v) and v not in names]
-    return (True, len(hall) == 0)
+        return (False, False, False)
+    names = set(n for n, _, _ in scope)
+    used = [v for v in expr_vars(j) if not re.match(r'^p\d+$', v)]
+    hall = [v for v in used if v not in names]
+    # Effect soundness: the declared rows must cover the union of the used
+    # symbols' rows (mirrors claw_effects::check_by_names in the grader).
+    required = set()
+    for n, _, eff in scope:
+        if n in used:
+            required.update(eff)
+    declared = set()
+    defs = j if isinstance(j, list) else [j]
+    for d in defs:
+        if isinstance(d, dict):
+            declared.update(d.get("effects") or [])
+    return (True, len(hall) == 0, required <= declared)
 
 
 tasks = [json.load(open(f)) for f in sorted(glob.glob("../bench/tasks-large/*.json"))]
 scopes, prompts = [], []
 for t in tasks:
-    scope = [(s["name"], s["ty"]) for s in t.get("scope", [])]
-    scopeln = "\n".join(f"  {n} : {s}" for n, s in scope)
+    scope = [(s["name"], s["ty"], s.get("effects", [])) for s in t.get("scope", [])]
+    scopeln = "\n".join(
+        f"  {n} : {s}" + (f"  [effects: {', '.join(e)}]" if e else "")
+        for n, s, e in scope)
     scopes.append(scope)
     prompts.append(f"Task: {t['prompt']}\n\nIn-scope symbols (the ONLY callable definitions):\n{scopeln}")
 
@@ -77,8 +102,9 @@ res["tuned"] = gen_batch(prompts, "tuned")
 
 n = len(tasks)
 for k in ("base", "tuned"):
-    v = c = 0
+    v = c = e = clean = 0
     for raw, scope in zip(res[k], scopes):
-        vi, ci = check(raw, scope)
-        v += vi; c += ci
-    print(f"{k}: valid_json={v}/{n} ({100 * v // n}%)  clean_no_halluc={c}/{n} ({100 * c // n}%)")
+        vi, ci, ei = check(raw, scope)
+        v += vi; c += ci; e += ei; clean += (ci and ei)
+    print(f"{k}: valid_json={v}/{n} ({100 * v // n}%)  no_halluc={c}/{n} ({100 * c // n}%)  "
+          f"effects_sound={e}/{n} ({100 * e // n}%)  clean={clean}/{n} ({100 * clean // n}%)")

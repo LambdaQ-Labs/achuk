@@ -72,6 +72,11 @@ pub struct ScopeEntry {
     pub ty: String,
     #[serde(default)]
     pub deprecated: bool,
+    /// Declared effect row of the symbol (e.g. `["Fs"]` for `File.read!`).
+    /// A solution referencing the symbol must declare a superset — enforced
+    /// by the existing `check_by_names` effect-soundness pass.
+    #[serde(default)]
+    pub effects: Vec<String>,
 }
 
 /// A named scalar parameter of the function under test, in signature
@@ -117,6 +122,7 @@ impl Task {
                 .map_err(|e| anyhow::anyhow!("scope `{}`: {e}", entry.name))?;
             let mut def = Def::new(Expr::Lit(Lit::Str(entry.name.clone())), ty);
             def.deprecated = entry.deprecated;
+            def.effects = entry.effects.clone();
             let h = cdb.put(&def)?;
             cdb.bind(&entry.name, &h)?;
         }
@@ -427,11 +433,13 @@ mod tests {
                 name: "Nat.checkedSub".into(),
                 ty: "Nat, Nat -> Result Nat MathErr".into(),
                 deprecated: false,
+                effects: Vec::new(),
             },
             ScopeEntry {
                 name: "Nat.max".into(),
                 ty: "Nat, Nat -> Nat".into(),
                 deprecated: false,
+                effects: Vec::new(),
             },
         ];
         let cdb = task.build_scope_cdb().unwrap();
@@ -449,6 +457,7 @@ mod tests {
             name: "broken".into(),
             ty: "Nat,".into(),
             deprecated: false,
+                effects: Vec::new(),
         }];
         assert!(task.build_scope_cdb().is_err());
     }

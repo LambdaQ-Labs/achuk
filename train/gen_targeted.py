@@ -10,7 +10,7 @@ Generates bench-STYLE (phrasing/shape) but not bench-CONTENT examples:
 function names and (name, op, constant) combos are disjoint from every
 bench/tasks-large family, so the gate still measures generalization.
 
-    python gen_targeted.py >> corpus-full.jsonl
+    python gen_targeted.py > targeted.jsonl   # merged into the corpus-v3 build
 """
 import json
 
@@ -114,6 +114,60 @@ for name, ns in CLAMPISH:
                   f"[{ns[1]}, {ns[2]}]: it {how}. Use only in-scope symbols.")
         emit(prompt, d(name, lam(["p0", "p1", "p2"], body), fn_ty(3)),
              ["Nat.max", "Nat.min"])
+
+# --- Class D: platform effects under bench-style phrasing -------------------
+# The sys platform's hosted effects. Names are disjoint from the bench's
+# gen-plat-* tasks (print_file vs cat_file, dump_env vs show_env, ...) so the
+# gate measures the SHAPE (effectful call + declared row), not memorization.
+EFF = {"File.read!": ["Fs"], "Env.get!": ["Env"], "Stdout.line!": ["Stdout"]}
+STR, UNIT = {"Named": "Str"}, {"Named": "Unit"}
+
+
+def deff(name, expr, ty, effects):
+    return [{"deprecated": False, "doc": "", "effects": sorted(effects),
+             "expr": expr, "name": name, "ty": ty}]
+
+
+PLAT_TARGETED = [
+    # wrappers, varied names/param-names
+    ("load_file", "path", "File.read!", STR, STR,
+     "reads the file at {p} with `File.read!`"),
+    ("fetch_env", "key", "Env.get!", STR, STR,
+     "reads the environment variable named {p} with `Env.get!`"),
+    ("emit_line", "text", "Stdout.line!", STR, UNIT,
+     "prints {p} with `Stdout.line!`"),
+]
+for name, p, sym, a, r, how in PLAT_TARGETED:
+    prompt = (f"Define `{name}` : Str -> {'Unit' if r is UNIT else 'Str'} "
+              f"(parameter p0 named {p}) that {how.format(p=p)}. "
+              f"Declare its effects ({', '.join(EFF[sym])}).")
+    emit(prompt, deff(name, lam(["p0"], app(sym, [var("p0")])),
+                      {"Fn": [[a], r]}, EFF[sym]), [sym])
+
+PLAT_PIPES = [
+    ("print_file", "path", "File.read!", "Stdout.line!", UNIT,
+     "reads the file at {p} with `File.read!` and prints the contents with `Stdout.line!`"),
+    ("dump_env", "key", "Env.get!", "Stdout.line!", UNIT,
+     "reads the environment variable {p} with `Env.get!` and prints it with `Stdout.line!`"),
+    ("load_upper", "path", "File.read!", "Str.upper", STR,
+     "reads the file at {p} with `File.read!` and uppercases the contents with `Str.upper`"),
+]
+for name, p, g, f, r, how in PLAT_PIPES:
+    effects = sorted(set(EFF.get(g, []) + EFF.get(f, [])))
+    prompt = (f"Define `{name}` : Str -> {'Unit' if r is UNIT else 'Str'} "
+              f"(parameter p0 named {p}) that {how.format(p=p)}. "
+              f"Declare its effects ({', '.join(effects)}).")
+    body = app(f, [app(g, [var("p0")])])
+    emit(prompt, deff(name, lam(["p0"], body), {"Fn": [[STR], r]}, effects),
+         [g, f])
+
+# pure Str shape with an explicitly-empty effect row (the negative case)
+for name, ns in [("glue2", ("a", "b")), ("join_pair", ("left", "right"))]:
+    prompt = (f"Define `{name}` : Str, Str -> Str (parameters p0, p1 named "
+              f"{ns[0]}, {ns[1]}) that concatenates {ns[0]} and {ns[1]} with the "
+              f"in-scope `Str.concat`. It performs no effects — declare an empty effect row.")
+    emit(prompt, deff(name, lam(["p0", "p1"], app("Str.concat", [var("p0"), var("p1")])),
+                      {"Fn": [[STR, STR], STR]}, []), ["Str.concat"])
 
 # --- Class C: 2-param forwards with "named" phrasing (p-pool reinforcement) -
 for op in OPS:

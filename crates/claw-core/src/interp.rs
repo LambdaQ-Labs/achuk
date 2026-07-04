@@ -60,9 +60,12 @@ pub enum RunError {
 const MAX_STEPS: u32 = 100_000;
 // Native recursion-depth cap. eval_inner/apply recurse on the Rust stack;
 // without a depth bound a term like the omega combinator overflows the
-// native stack (SIGSEGV) before MAX_STEPS trips. A modest cap returns
-// RunError::Depth cleanly, well under the default 8 MB stack.
-const MAX_DEPTH: u32 = 1024;
+// native stack (SIGSEGV) before MAX_STEPS trips. The cap must clear the
+// SMALLEST stack eval runs on: test threads get 2 MiB, and a debug-build
+// eval frame (match arms incl. records/match lowering) can run to several
+// KB, so 1024 frames no longer fit. 128 is far deeper than any benchmark
+// or contract program while leaving a wide margin on a 2 MiB stack.
+const MAX_DEPTH: u32 = 128;
 
 struct Budget {
     steps: u32,

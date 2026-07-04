@@ -697,6 +697,19 @@ fn label_hash(names: &std::collections::HashMap<String, String>, h: &Hash) -> St
 /// lowered definitions straight from the database.
 struct CdbResolver<'a> {
     cdb: &'a Cdb,
+    /// hash -> name, built once — eval calls name_of per Ref, and a full
+    /// symbols() table scan per call is quadratic on larger DBs.
+    names: std::collections::HashMap<Hash, String>,
+}
+
+impl<'a> CdbResolver<'a> {
+    fn new(cdb: &'a Cdb) -> Self {
+        let names = cdb
+            .symbols()
+            .map(|v| v.into_iter().map(|(n, h)| (h, n)).collect())
+            .unwrap_or_default();
+        CdbResolver { cdb, names }
+    }
 }
 
 impl claw_core::interp::Resolver for CdbResolver<'_> {
@@ -704,12 +717,7 @@ impl claw_core::interp::Resolver for CdbResolver<'_> {
         self.cdb.get(h).ok().map(|d| d.expr)
     }
     fn name_of(&self, h: &Hash) -> Option<String> {
-        self.cdb
-            .symbols()
-            .ok()?
-            .into_iter()
-            .find(|(_, hh)| hh == h)
-            .map(|(n, _)| n)
+        self.names.get(h).cloned()
     }
     fn resolve_name(&self, name: &str) -> Option<claw_core::Expr> {
         let h = self.cdb.resolve(name).ok()?;
@@ -864,7 +872,7 @@ fn db_cmd(db_path: &Path, args: &[String]) -> anyhow::Result<()> {
             let pred_src = need(args, 4, "ensures predicate")?;
             let pred = claw_contract::parse_pred(pred_src).map_err(|e| anyhow::anyhow!("{e:?}"))?;
 
-            let res = CdbResolver { cdb: &cdb };
+            let res = CdbResolver::new(&cdb);
             let body = res
                 .resolve_name(name)
                 .ok_or_else(|| anyhow::anyhow!("no such def: {name}"))?;
@@ -939,7 +947,7 @@ fn db_cmd(db_path: &Path, args: &[String]) -> anyhow::Result<()> {
                 func: Box::new(Expr::Var(name.clone())),
                 args: args[2..].iter().map(|a| parse_eval_arg(a)).collect(),
             };
-            let res = CdbResolver { cdb: &cdb };
+            let res = CdbResolver::new(&cdb);
             match interp::eval(&call, &interp::Env::new(), &res) {
                 Ok(v) => println!("{}", fmt_value(&v)),
                 Err(e) => {

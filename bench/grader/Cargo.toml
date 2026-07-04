@@ -10,5 +10,7 @@ claw-cdb = { path = "../../cdb" }
 claw-effects = { path = "../../effects" }
 claw-contract = { path = "../../contract" }
 serde = { workspace = true }
-serde_json = { workspace = true }
 anyhow = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

@@ -142,11 +142,6 @@ fn sanitize_ident(v: &str) -> String {
     }
 }
 
-/// Emit a `use` line for an FFI target — `extern rust "sha2" { sha256 }`.
-pub fn emit_ffi_use(crate_name: &str, item: &str) -> String {
-    format!("use {}::{};", crate_name.replace('-', "_"), item)
-}
-
 /// Emit a whole definition as a Rust item. A function-typed def whose body
 /// is a lambda becomes a `pub fn`; anything else becomes a `pub const`.
 /// Generic type variables in the signature become `<A, B, …>` params.
@@ -267,11 +262,6 @@ mod tests {
     fn reserved_words_are_escaped() {
         let e = Expr::Var("fn".into());
         assert_eq!(emit_expr(&e, &NameMap::new()).unwrap(), "r#fn");
-    }
-
-    #[test]
-    fn ffi_use_line() {
-        assert_eq!(emit_ffi_use("sha2", "Sha256"), "use sha2::Sha256;");
     }
 
     #[test]

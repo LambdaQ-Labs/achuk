@@ -92,14 +92,6 @@ fn render_pat(p: &crate::Pat) -> String {
     }
 }
 
-/// Render a whole module from (name, def) pairs.
-pub fn render_module(defs: &[(String, Def)]) -> String {
-    defs.iter()
-        .map(|(n, d)| render_def(n, d))
-        .collect::<Vec<_>>()
-        .join("\n\n")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -139,14 +131,5 @@ mod tests {
             ],
         };
         assert_eq!(render_expr(&e), "Nat.add(2, Nat.mul(p0, 3))");
-    }
-
-    #[test]
-    fn module_joins_defs() {
-        let a = Def::new(Expr::Lit(Lit::Int(1)), named("Nat"));
-        let b = Def::new(Expr::Lit(Lit::Int(2)), named("Nat"));
-        let m = render_module(&[("one".into(), a), ("two".into(), b)]);
-        assert!(m.contains("one : Nat\none = 1"));
-        assert!(m.contains("two : Nat\ntwo = 2"));
     }
 }

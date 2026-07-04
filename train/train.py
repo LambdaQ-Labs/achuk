@@ -21,10 +21,11 @@ from trl import SFTTrainer, SFTConfig
 # The output protocol the benchmark runner sends at eval time. Training with
 # the same framing the model will see at inference keeps train/eval aligned.
 PROTOCOL = """Output ONLY a JSON array of definitions, no prose, no code fences.
-Definition schema: {"name": str, "expr": <Expr>, "ty": <Type>, "effects": [], "deprecated": false, "doc": ""}
+Definition schema: {"name": str, "expr": <Expr>, "ty": <Type>, "effects": [<str>], "deprecated": false, "doc": ""}
 Expr: {"Var": name} | {"Lit": {"Int": n}} | {"Lit": {"Str": s}} | {"Lam": {"params": ["p0"], "body": <Expr>}} | {"App": {"func": <Expr>, "args": [<Expr>]}}
 Type: {"Named": "Nat"} | {"Var": "a"} | {"App": ["Result", [<Type>]]} | {"Fn": [[<Type>], <Type>]}
-Lambda parameters MUST be named p0, p1, ... Reference a parameter or an in-scope symbol with {"Var": "<name>"}. Do NOT invent any other name."""
+Lambda parameters MUST be named p0, p1, ... Reference a parameter or an in-scope symbol with {"Var": "<name>"}. Do NOT invent any other name.
+"effects" lists the effect row: the union of the effect rows of every effectful in-scope symbol the code uses (e.g. ["Fs"] when calling File.read!); [] for pure code."""
 
 
 def build_text(tok, prompt, completion):
@@ -40,7 +41,7 @@ def build_text(tok, prompt, completion):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="Qwen/Qwen2.5-Coder-0.5B-Instruct")
-    ap.add_argument("--corpus", default="corpus.jsonl")
+    ap.add_argument("--corpus", default="corpus-v3.jsonl")
     ap.add_argument("--out", default="claw-lora")
     ap.add_argument("--epochs", type=float, default=3.0)
     ap.add_argument("--lr", type=float, default=2e-4)

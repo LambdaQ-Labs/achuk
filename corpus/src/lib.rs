@@ -16,7 +16,7 @@
 //! Spec: master-plan WS-H (the 80% — the cold-start escape).
 
 use claw_cdb::Cdb;
-use claw_core::{Def, Expr, Hash, Type};
+use claw_core::{Def, Expr, Type};
 use serde::{Deserialize, Serialize};
 
 /// One supervised training example.
@@ -39,7 +39,7 @@ pub fn generate(cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
     for (name, hash) in cdb.symbols()? {
         let def = cdb.get(&hash)?;
         if let Type::Fn(params, ret) = &def.ty {
-            if let Some(ex) = wrapper_example(&name, &hash, params, ret) {
+            if let Some(ex) = wrapper_example(&name, params, ret, &def.effects) {
                 out.push(ex);
             }
         }
@@ -49,7 +49,9 @@ pub fn generate(cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
 
 /// Synthesize `\a0.. -> name a0..` : a point-free wrapper that calls the
 /// symbol on fresh params. Always type-correct and hallucination-free.
-fn wrapper_example(name: &str, hash: &Hash, params: &[Type], ret: &Type) -> Option<Example> {
+/// An effectful symbol's wrapper declares the same effect row — the corpus
+/// teaches effect declaration exactly like it teaches in-scope references.
+fn wrapper_example(name: &str, params: &[Type], ret: &Type, effects: &[String]) -> Option<Example> {
     if params.is_empty() || params.len() > 3 {
         return None;
     }
@@ -58,31 +60,37 @@ fn wrapper_example(name: &str, hash: &Hash, params: &[Type], ret: &Type) -> Opti
     // Reference the scope symbol BY NAME (Var), not by content hash (Ref):
     // a model can reproduce a name but never guess a hash. This keeps the
     // corpus in the same protocol the benchmark/eval use.
-    let _ = hash;
     let body = Expr::App {
         func: Box::new(Expr::Var(name.into())),
         args: param_names.iter().map(|p| Expr::Var(p.clone())).collect(),
     };
-    let def = Def::new(
+    let mut def = Def::new(
         Expr::Lam {
             params: param_names.clone(),
             body: Box::new(body),
         },
         Type::Fn(params.to_vec(), Box::new(ret.clone())),
     );
+    def.effects = effects.to_vec();
 
     let sig = Type::Fn(params.to_vec(), Box::new(ret.clone()));
+    let effect_note = if effects.is_empty() {
+        String::new()
+    } else {
+        format!(" Declare its effects ({}).", effects.join(", "))
+    };
     let prompt = format!(
         "Define a function `apply_{}` : {} that forwards its arguments to the in-scope `{}`. \
-         Use only in-scope symbols.",
-        name.replace('.', "_").to_lowercase(),
+         Use only in-scope symbols.{}",
+        name.replace('.', "_").to_lowercase().replace('!', ""),
         sig,
-        name
+        name,
+        effect_note
     );
 
     // Completion in the named Def-JSON protocol (with the def's own name).
     let value = serde_json::json!([{
-        "name": format!("apply_{}", name.replace('.', "_").to_lowercase()),
+        "name": format!("apply_{}", name.replace('.', "_").to_lowercase().replace('!', "")),
         "expr": def.expr,
         "ty": def.ty,
         "effects": def.effects,
@@ -102,6 +110,9 @@ fn wrapper_example(name: &str, hash: &Hash, params: &[Type], ret: &Type) -> Opti
 /// project to ingest. Deterministic.
 pub fn stdlib_cdb() -> Cdb {
     use claw_core::{parse::parse_type, Expr, Lit};
+    // Pure symbols: (name, signature). Effectful platform symbols (the `sys`
+    // platform's hosted effects) are added below with their effect rows —
+    // `Unit` stands for the surface `{}` return.
     let sigs: &[(&str, &str)] = &[
         ("Nat.add", "Nat, Nat -> Nat"),
         ("Nat.sub", "Nat, Nat -> Nat"),
@@ -135,10 +146,25 @@ pub fn stdlib_cdb() -> Cdb {
         ("Maybe.isSome", "Maybe a -> Bool"),
         ("Result.isOk", "Result a e -> Bool"),
     ];
+    // The sys platform's hosted effects (platforms/sys): name, signature,
+    // effect row. Wrappers/composes over these teach the model to reference
+    // platform symbols AND declare the matching effects.
+    let effectful: &[(&str, &str, &[&str])] = &[
+        ("File.read!", "Str -> Str", &["Fs"]),
+        ("Env.get!", "Str -> Str", &["Env"]),
+        ("Stdout.line!", "Str -> Unit", &["Stdout"]),
+    ];
     let mut cdb = Cdb::in_memory().expect("in-memory cdb");
     for (name, sig) in sigs {
         let ty = parse_type(sig).expect("valid stdlib sig");
         let def = Def::new(Expr::Lit(Lit::Str((*name).into())), ty);
+        let h = cdb.put(&def).expect("put");
+        cdb.bind(name, &h).expect("bind");
+    }
+    for (name, sig, effects) in effectful {
+        let ty = parse_type(sig).expect("valid platform sig");
+        let mut def = Def::new(Expr::Lit(Lit::Str((*name).into())), ty);
+        def.effects = effects.iter().map(|e| e.to_string()).collect();
         let h = cdb.put(&def).expect("put");
         cdb.bind(name, &h).expect("bind");
     }
@@ -149,14 +175,14 @@ pub fn stdlib_cdb() -> Cdb {
 /// `\p0 -> f (g p0)` : A -> C. Over the stdlib this yields many
 /// type-correct, hallucination-free programs.
 fn compose_examples(cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
-    let unary: Vec<(String, Hash, Type, Type)> = cdb
+    let unary: Vec<(String, Type, Type, Vec<String>)> = cdb
         .symbols()?
         .into_iter()
         .filter_map(|(n, h)| {
             let d = cdb.get(&h).ok()?;
             if let Type::Fn(ps, ret) = &d.ty {
                 if ps.len() == 1 {
-                    return Some((n, h, ps[0].clone(), (**ret).clone()));
+                    return Some((n, ps[0].clone(), (**ret).clone(), d.effects.clone()));
                 }
             }
             None
@@ -164,13 +190,13 @@ fn compose_examples(cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
         .collect();
 
     let mut out = Vec::new();
-    for (gname, gh, ga, gb) in &unary {
-        for (fname, fh, fb, fc) in &unary {
+    for (gname, ga, gb, geff) in &unary {
+        for (fname, fb, fc, feff) in &unary {
             // g : ga -> gb ; f : fb -> fc ; composable when gb unifies fb
+            // (reference by name, not hash — see wrapper_example)
             if claw_core::unify(gb, fb).is_none() {
                 continue;
             }
-            let _ = (fh, gh); // reference by name, not hash (see wrapper_example)
             let body = Expr::App {
                 func: Box::new(Expr::Var(fname.clone())),
                 args: vec![Expr::App {
@@ -179,26 +205,37 @@ fn compose_examples(cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
                 }],
             };
             let ty = Type::Fn(vec![ga.clone()], Box::new(fc.clone()));
-            let def = Def::new(
+            let mut def = Def::new(
                 Expr::Lam {
                     params: vec!["p0".into()],
                     body: Box::new(body),
                 },
                 ty.clone(),
             );
+            // Effect row of a pipeline = union of its stages' rows, sorted
+            // for determinism. Sound by construction (check_by_names agrees).
+            let mut effects: Vec<String> = geff.iter().chain(feff.iter()).cloned().collect();
+            effects.sort();
+            effects.dedup();
+            def.effects = effects;
             let dname = format!(
                 "{}_then_{}",
-                gname.replace('.', "_").to_lowercase(),
-                fname.replace('.', "_").to_lowercase()
+                gname.replace('.', "_").to_lowercase().replace('!', ""),
+                fname.replace('.', "_").to_lowercase().replace('!', "")
             );
+            let effect_note = if def.effects.is_empty() {
+                String::new()
+            } else {
+                format!(" Declare its effects ({}).", def.effects.join(", "))
+            };
             let value = serde_json::json!([{
                 "name": dname,
                 "expr": def.expr, "ty": def.ty,
-                "effects": [], "deprecated": false, "doc": ""
+                "effects": def.effects, "deprecated": false, "doc": ""
             }]);
             out.push(Example {
                 prompt: format!(
-                    "Define `{dname}` : {ty} that applies `{gname}` then `{fname}`. Use only in-scope symbols.",
+                    "Define `{dname}` : {ty} that applies `{gname}` then `{fname}`. Use only in-scope symbols.{effect_note}",
                 ),
                 completion: serde_json::to_string(&value).unwrap_or_default(),
                 uses: vec![gname.clone(), fname.clone()],
@@ -513,6 +550,37 @@ mod tests {
         for ex in generate(&cdb).unwrap() {
             for u in &ex.uses {
                 assert!(known.contains(u), "corpus used unknown symbol {u}");
+            }
+        }
+    }
+
+    #[test]
+    fn effectful_wrappers_declare_their_effects() {
+        let examples = generate_stdlib().unwrap();
+        // File.read! wrapper: declares Fs, prompt asks for the declaration.
+        let read = examples
+            .iter()
+            .find(|e| e.uses == vec!["File.read!".to_string()] && e.prompt.contains("forwards"))
+            .expect("File.read! wrapper example");
+        let v: serde_json::Value = serde_json::from_str(&read.completion).unwrap();
+        assert_eq!(v[0]["effects"], serde_json::json!(["Fs"]));
+        assert_eq!(v[0]["name"], "apply_file_read");
+        assert!(read.prompt.contains("Declare its effects (Fs)"));
+        // read-then-print pipeline: effect row is the sorted union.
+        let pipe = examples
+            .iter()
+            .find(|e| {
+                e.uses.contains(&"File.read!".to_string())
+                    && e.uses.contains(&"Stdout.line!".to_string())
+            })
+            .expect("File.read! -> Stdout.line! compose example");
+        let v: serde_json::Value = serde_json::from_str(&pipe.completion).unwrap();
+        assert_eq!(v[0]["effects"], serde_json::json!(["Fs", "Stdout"]));
+        // No bang leaks into produced def names.
+        for ex in &examples {
+            let v: serde_json::Value = serde_json::from_str(&ex.completion).unwrap();
+            for d in v.as_array().unwrap() {
+                assert!(!d["name"].as_str().unwrap().contains('!'));
             }
         }
     }

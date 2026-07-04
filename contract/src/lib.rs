@@ -19,20 +19,9 @@ mod property;
 
 pub use eval::{eval_pred, Value};
 pub use parse::{parse_pred, ParseError};
-pub use property::{generate_cases, generate_from_strings, Case};
+pub use property::{generate_cases, Case};
 
 use serde::{Deserialize, Serialize};
-
-/// A contract attached to a definition.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct Contract {
-    /// Preconditions — must hold on inputs before the call.
-    pub requires: Vec<String>,
-    /// Postconditions — must hold on (inputs, result) after.
-    pub ensures: Vec<String>,
-    /// Concrete input→output examples.
-    pub examples: Vec<String>,
-}
 
 /// Comparison / boolean operators in the predicate language.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -72,11 +61,9 @@ pub enum Pred {
     Cmp(Op, PExpr, PExpr),
     And(Box<Pred>, Box<Pred>),
     Or(Box<Pred>, Box<Pred>),
-    Not(Box<Pred>),
     Implies(Box<Pred>, Box<Pred>),
     /// `ok(x)` — true iff the named value is a successful Result.
     IsOk(String),
     /// `err(x)` — true iff the named value is an error Result.
     IsErr(String),
-    Bool(bool),
 }

@@ -51,6 +51,16 @@ def vars_of(x):
     return o
 
 
+def expr_vars(defs):
+    """Var names from each def's EXPR only — Type::Var serializes as
+    {"Var": "a"} too, so walking "ty" misreads generics as references."""
+    out = []
+    for d in (defs if isinstance(defs, list) else [defs]):
+        if isinstance(d, dict):
+            out += vars_of(d.get("expr"))
+    return out
+
+
 files = sorted(glob.glob("../bench/tasks-large/*.json"))
 tasks = [json.load(open(f)) for f in files]
 scopes, prompts = [], []
@@ -66,7 +76,7 @@ for f, t, scope, raw in zip(files, tasks, scopes, outs):
     names = set(n for n, _ in scope)
     try:
         j = json.loads(raw.strip().strip('`').replace('json', '', 1).strip())
-        hall = sorted(set(v for v in vars_of(j) if not re.match(r'^p\d+$', v) and v not in names))
+        hall = sorted(set(v for v in expr_vars(j) if not re.match(r'^p\d+$', v) and v not in names))
         if not hall:
             continue
         reason = {"hallucinated": hall}

@@ -136,11 +136,6 @@ impl Cdb {
         Ok(())
     }
 
-    pub fn remove_name(&self, name: &str) -> Result<()> {
-        self.conn
-            .execute("DELETE FROM names WHERE name = ?1", params![name])?;
-        Ok(())
-    }
 
     // ------------------------------------------------------------------
     // Query API (docs/p2-spec.md §1.4)

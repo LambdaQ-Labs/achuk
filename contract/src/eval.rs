@@ -80,10 +80,10 @@ fn builtin_call(name: &str, args: &[Value]) -> Result<Value, EvalError> {
         ("List.len", [Value::List(xs)]) => Ok(Value::Int(xs.len() as i64)),
         ("Nat.max", [a, b]) => Ok(Value::Int(as_int(a)?.max(as_int(b)?))),
         ("Nat.min", [a, b]) => Ok(Value::Int(as_int(a)?.min(as_int(b)?))),
-        ("Nat.add", [a, b]) => as_int(a)?
-            .checked_add(as_int(b)?)
-            .map(Value::Int)
-            .ok_or_else(|| EvalError::TypeError("arithmetic overflow".into())),
+        // Saturating, matching claw_core::interp's builtin — a contract like
+        // `result == Nat.add(a, b)` must agree with the interpreter at the
+        // integer boundary rather than erroring where the runtime saturates.
+        ("Nat.add", [a, b]) => Ok(Value::Int(as_int(a)?.saturating_add(as_int(b)?))),
         _ => Err(EvalError::UnknownCall(format!("{name}/{}", args.len()))),
     }
 }
@@ -91,8 +91,6 @@ fn builtin_call(name: &str, args: &[Value]) -> Result<Value, EvalError> {
 /// Evaluate a predicate to a boolean under `env`.
 pub fn eval_pred(p: &Pred, env: &Env) -> Result<bool, EvalError> {
     match p {
-        Pred::Bool(b) => Ok(*b),
-        Pred::Not(x) => Ok(!eval_pred(x, env)?),
         Pred::And(a, b) => Ok(eval_pred(a, env)? && eval_pred(b, env)?),
         Pred::Or(a, b) => Ok(eval_pred(a, env)? || eval_pred(b, env)?),
         // Vacuously true when the antecedent is false — standard implication.

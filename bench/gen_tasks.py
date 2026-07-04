@@ -105,4 +105,39 @@ for opname, sym, _desc, ctpl in UNARY:
             write(task(tid, prompt, [{"name": sym, "ty": "Nat, Nat -> Nat"}],
                        [{"name": "x"}], [], contracts))
 
+# 7) platform effects — the sys platform's hosted effects in scope. Graded
+#    for hallucination-free references AND effect soundness (declared row
+#    must cover the used symbols' rows — "effect-unsound" is forbidden).
+#    Contracts don't execute (no scalar params) — reference + effects only.
+PLAT = [
+    {"name": "File.read!", "ty": "Str -> Str", "effects": ["Fs"]},
+    {"name": "Env.get!", "ty": "Str -> Str", "effects": ["Env"]},
+    {"name": "Stdout.line!", "ty": "Str -> Unit", "effects": ["Stdout"]},
+    {"name": "Str.concat", "ty": "Str, Str -> Str"},
+    {"name": "Str.upper", "ty": "Str -> Str"},
+]
+
+def plat_task(tid, prompt):
+    return {
+        "id": tid, "category": "effect", "prompt": prompt,
+        "scope": PLAT, "params": [],
+        "grade": {"compile": True, "requires": [], "contracts": [],
+                  "forbidden": ["hallucinated-symbol", "effect-unsound"]},
+    }
+
+PLAT_TASKS = [
+    ("gen-plat-readfile", "Define `read_file` : Str -> Str (parameter p0 named path) that forwards path to the in-scope `File.read!`. Declare its effects (Fs)."),
+    ("gen-plat-getenv", "Define `get_env` : Str -> Str (parameter p0 named key) that forwards key to the in-scope `Env.get!`. Declare its effects (Env)."),
+    ("gen-plat-println", "Define `println` : Str -> Unit (parameter p0 named msg) that forwards msg to the in-scope `Stdout.line!`. Declare its effects (Stdout)."),
+    ("gen-plat-catfile", "Define `cat_file` : Str -> Unit (parameter p0 named path) that reads the file at path with `File.read!` and prints the contents with `Stdout.line!`. Declare its effects (Fs, Stdout)."),
+    ("gen-plat-showenv", "Define `show_env` : Str -> Unit (parameter p0 named key) that reads the environment variable with `Env.get!` and prints it with `Stdout.line!`. Declare its effects (Env, Stdout)."),
+    ("gen-plat-readupper", "Define `read_upper` : Str -> Str (parameter p0 named path) that reads the file at path with `File.read!` and uppercases the contents with `Str.upper`. Declare its effects (Fs)."),
+    ("gen-plat-envupper", "Define `env_upper` : Str -> Str (parameter p0 named key) that reads the environment variable with `Env.get!` then applies `Str.upper`. Declare its effects (Env)."),
+    ("gen-plat-shoutfile", "Define `shout_file` : Str -> Unit (parameter p0 named path) that reads the file at path with `File.read!`, uppercases it with `Str.upper`, and prints it with `Stdout.line!`. Declare its effects (Fs, Stdout)."),
+    ("gen-plat-purecat", "Define `join2` : Str, Str -> Str (parameters p0, p1 named a, b) that concatenates a and b with the in-scope `Str.concat`. It performs no effects — declare an empty effect row."),
+    ("gen-plat-readboth", "Define `read_both` : Str, Str -> Str (parameters p0, p1 named path1, path2) that reads both files with `File.read!` and concatenates the contents with `Str.concat`. Declare its effects (Fs)."),
+]
+for tid, prompt in PLAT_TASKS:
+    write(plat_task(tid, prompt))
+
 print(f"wrote {n} tasks to {OUT}")

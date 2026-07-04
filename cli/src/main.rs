@@ -470,6 +470,58 @@ fn label_hash(names: &std::collections::HashMap<String, String>, h: &Hash) -> St
     }
 }
 
+/// A `Resolver` backed by the CDB: resolves references (by hash) and free
+/// names (top-level defs) to their bodies, so the interpreter can run
+/// lowered definitions straight from the database.
+struct CdbResolver<'a> {
+    cdb: &'a Cdb,
+}
+
+impl claw_core::interp::Resolver for CdbResolver<'_> {
+    fn resolve(&self, h: &Hash) -> Option<claw_core::Expr> {
+        self.cdb.get(h).ok().map(|d| d.expr)
+    }
+    fn name_of(&self, h: &Hash) -> Option<String> {
+        self.cdb
+            .symbols()
+            .ok()?
+            .into_iter()
+            .find(|(_, hh)| hh == h)
+            .map(|(n, _)| n)
+    }
+    fn resolve_name(&self, name: &str) -> Option<claw_core::Expr> {
+        let h = self.cdb.resolve(name).ok()?;
+        self.cdb.get(&h).ok().map(|d| d.expr)
+    }
+}
+
+/// Convert an interpreter value to a contract value (same shape).
+fn to_contract_value(v: &claw_core::interp::Value) -> claw_contract::Value {
+    use claw_contract::Value as C;
+    use claw_core::interp::Value as I;
+    match v {
+        I::Int(n) => C::Int(*n),
+        I::Bool(b) => C::Bool(*b),
+        I::Str(s) => C::Str(s.clone()),
+        I::List(xs) => C::List(xs.iter().map(to_contract_value).collect()),
+        I::Ok(x) => C::Ok(Box::new(to_contract_value(x))),
+        I::Err(x) => C::Err(Box::new(to_contract_value(x))),
+        // closures/builtins aren't contract values; represent opaquely
+        other => C::Str(format!("{other:?}")),
+    }
+}
+
+/// Human-readable rendering of an interpreter value.
+fn fmt_value(v: &claw_core::interp::Value) -> String {
+    use claw_core::interp::Value;
+    match v {
+        Value::Int(n) => n.to_string(),
+        Value::Bool(b) => b.to_string(),
+        Value::Str(s) => format!("{s:?}"),
+        other => format!("{other:?}"),
+    }
+}
+
 /// Resolve a CLI reference: try as bound name first, then as full hash.
 fn resolve_ref(cdb: &Cdb, r: &str) -> anyhow::Result<Hash> {
     if let Ok(h) = cdb.resolve(r) {
@@ -549,6 +601,88 @@ fn db_cmd(db_path: &Path, args: &[String]) -> anyhow::Result<()> {
             let file = need(args, 1, "path to .claw file")?;
             let n = ingest(&mut cdb, Path::new(file))?;
             eprintln!("ingested {n} definition(s) from {file}");
+        }
+        // Property-check a real def: run it on every integer input in a
+        // range and verify a postcondition. Contracts, on your actual code.
+        //   claw db check <name> <lo> <hi> "<ensures predicate>"
+        // The predicate may reference `result` and the function's parameter.
+        Some("check") => {
+            use claw_core::interp::Resolver as _;
+            use claw_core::{interp, Expr, Lit};
+            let name = need(args, 1, "def name")?;
+            let lo: i64 = need(args, 2, "lo")?.parse()?;
+            let hi: i64 = need(args, 3, "hi")?.parse()?;
+            let pred_src = need(args, 4, "ensures predicate")?;
+            let pred = claw_contract::parse_pred(pred_src).map_err(|e| anyhow::anyhow!("{e:?}"))?;
+
+            let res = CdbResolver { cdb: &cdb };
+            let body = res
+                .resolve_name(name)
+                .ok_or_else(|| anyhow::anyhow!("no such def: {name}"))?;
+            let param = match &body {
+                Expr::Lam { params, .. } if params.len() == 1 => params[0].clone(),
+                _ => anyhow::bail!("`check` supports unary functions only"),
+            };
+
+            let mut failures = 0;
+            for x in lo..=hi {
+                let call = Expr::App {
+                    func: Box::new(Expr::Var(name.clone())),
+                    args: vec![Expr::Lit(Lit::Int(x))],
+                };
+                let result = match interp::eval(&call, &interp::Env::new(), &res) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        println!("  {param}={x}: eval error {e:?}");
+                        failures += 1;
+                        continue;
+                    }
+                };
+                let mut env: std::collections::BTreeMap<String, claw_contract::Value> =
+                    std::collections::BTreeMap::new();
+                env.insert(param.clone(), to_contract_value(&interp::Value::Int(x)));
+                env.insert("result".into(), to_contract_value(&result));
+                match claw_contract::eval_pred(&pred, &env) {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        println!(
+                            "  counterexample: {param}={x} → result={}",
+                            fmt_value(&result)
+                        );
+                        failures += 1;
+                    }
+                    Err(e) => {
+                        println!("  {param}={x}: predicate error {e:?}");
+                        failures += 1;
+                    }
+                }
+            }
+            if failures == 0 {
+                println!("ok — `{name}` satisfies the contract for {param} in [{lo}, {hi}]");
+            } else {
+                println!("FAILED — {failures} counterexample(s)");
+                std::process::exit(1);
+            }
+        }
+        // Run a lowered definition straight from the database: apply the
+        // named function to integer arguments. Proves ingested bodies are
+        // executable — the substrate for running contracts on real code.
+        Some("eval") => {
+            use claw_core::{interp, Expr, Lit};
+            let name = need(args, 1, "def name")?;
+            let int_args: Vec<i64> = args[2..].iter().filter_map(|a| a.parse().ok()).collect();
+            let res = CdbResolver { cdb: &cdb };
+            let call = Expr::App {
+                func: Box::new(Expr::Var(name.clone())),
+                args: int_args.iter().map(|n| Expr::Lit(Lit::Int(*n))).collect(),
+            };
+            match interp::eval(&call, &interp::Env::new(), &res) {
+                Ok(v) => println!("{}", fmt_value(&v)),
+                Err(e) => {
+                    eprintln!("eval error: {e:?}");
+                    std::process::exit(1);
+                }
+            }
         }
         Some("mask") => {
             let ty = parse_type(need(args, 1, "type signature")?)?;

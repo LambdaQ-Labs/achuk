@@ -36,6 +36,12 @@ pub trait Resolver {
     /// The human name a hash is bound to, if any — used to dispatch builtins
     /// whose bodies we don't have (stdlib stubs in the benchmark scope).
     fn name_of(&self, hash: &Hash) -> Option<String>;
+    /// Resolve a free name to a definition's body (a top-level def
+    /// referenced by name). Lets the interpreter run real lowered bodies
+    /// from the CDB, where cross-def references are `Var(name)`, not `Ref`.
+    fn resolve_name(&self, _name: &str) -> Option<Expr> {
+        None
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -89,10 +95,19 @@ fn eval_step(
     match expr {
         Expr::Lit(Lit::Int(n)) => Ok(Value::Int(*n)),
         Expr::Lit(Lit::Str(s)) => Ok(Value::Str(s.clone())),
-        Expr::Var(v) => env
-            .get(v)
-            .cloned()
-            .ok_or_else(|| RunError::Unbound(v.clone())),
+        Expr::Var(v) => {
+            if let Some(val) = env.get(v) {
+                Ok(val.clone())
+            } else if is_builtin(v) {
+                Ok(Value::Builtin(v.clone()))
+            } else if let Some(body) = res.resolve_name(v) {
+                // A top-level def referenced by name: a closed term, so it
+                // evaluates in a fresh environment (captures nothing here).
+                eval_inner(&body, &Env::new(), res, b)
+            } else {
+                Err(RunError::Unbound(v.clone()))
+            }
+        }
         Expr::Ref(h) => {
             // A stdlib stub in scope resolves to its builtin by name;
             // otherwise inline the referenced definition's expression.
@@ -171,6 +186,16 @@ fn is_builtin(name: &str) -> bool {
             | "Str.concat"
             | "List.len"
             | "Bool.if"
+            // Operator/method names the compiler lowers to (real .claw bodies).
+            | "plus"
+            | "minus"
+            | "times"
+            | "is_lt"
+            | "is_le"
+            | "is_gt"
+            | "is_ge"
+            | "is_eq"
+            | "to_str"
     )
 }
 
@@ -195,6 +220,17 @@ fn builtin(name: &str, args: &[Value]) -> Result<Value, RunError> {
         ("Str.concat", [Value::Str(a), Value::Str(b)]) => Ok(Value::Str(format!("{a}{b}"))),
         ("List.len", [Value::List(xs)]) => Ok(Value::Int(xs.len() as i64)),
         ("Bool.if", [Value::Bool(c), t, e]) => Ok(if *c { t.clone() } else { e.clone() }),
+        // Compiler operator/method lowerings, over Int.
+        ("plus", [a, b]) => Ok(Value::Int(as_int(a)?.saturating_add(as_int(b)?))),
+        ("minus", [a, b]) => Ok(Value::Int(as_int(a)?.saturating_sub(as_int(b)?))),
+        ("times", [a, b]) => Ok(Value::Int(as_int(a)?.saturating_mul(as_int(b)?))),
+        ("is_lt", [a, b]) => Ok(Value::Bool(as_int(a)? < as_int(b)?)),
+        ("is_le", [a, b]) => Ok(Value::Bool(as_int(a)? <= as_int(b)?)),
+        ("is_gt", [a, b]) => Ok(Value::Bool(as_int(a)? > as_int(b)?)),
+        ("is_ge", [a, b]) => Ok(Value::Bool(as_int(a)? >= as_int(b)?)),
+        ("is_eq", [a, b]) => Ok(Value::Bool(as_int(a)? == as_int(b)?)),
+        ("to_str", [Value::Int(n)]) => Ok(Value::Str(n.to_string())),
+        ("to_str", [Value::Str(s)]) => Ok(Value::Str(s.clone())),
         _ => Err(RunError::Builtin(format!("{name}/{}", args.len()))),
     }
 }
@@ -305,6 +341,42 @@ mod tests {
     }
 
     #[test]
+    fn resolves_free_names_via_the_resolver_and_real_ops() {
+        // A resolver that maps `inc` to its lowered body: |n| plus(n, 1).
+        struct NameRes;
+        impl Resolver for NameRes {
+            fn resolve(&self, _: &Hash) -> Option<Expr> {
+                None
+            }
+            fn name_of(&self, _: &Hash) -> Option<String> {
+                None
+            }
+            fn resolve_name(&self, name: &str) -> Option<Expr> {
+                if name == "inc" {
+                    Some(Expr::Lam {
+                        params: vec!["n".into()],
+                        body: Box::new(Expr::App {
+                            func: Box::new(Expr::Var("plus".into())),
+                            args: vec![Expr::Var("n".into()), Expr::Lit(Lit::Int(1))],
+                        }),
+                    })
+                } else {
+                    None
+                }
+            }
+        }
+        // inc(inc(5)) == 7, resolving `inc` by name and `plus` as a builtin.
+        let e = Expr::App {
+            func: Box::new(Expr::Var("inc".into())),
+            args: vec![Expr::App {
+                func: Box::new(Expr::Var("inc".into())),
+                args: vec![Expr::Lit(Lit::Int(5))],
+            }],
+        };
+        assert_eq!(eval(&e, &Env::new(), &NameRes), Ok(Value::Int(7)));
+    }
+
+    #[test]
     fn if_is_lazy_untaken_branch_never_runs() {
         // if True then 1 else <unbound> — the else must NOT be evaluated.
         let e = Expr::If {
@@ -322,7 +394,10 @@ mod tests {
             then: Box::new(Expr::Lit(Lit::Int(42))),
             els: Box::new(Expr::Var("would_error".into())),
         };
-        assert_eq!(eval(&taken, &Env::new(), &BuiltinResolver), Ok(Value::Int(42)));
+        assert_eq!(
+            eval(&taken, &Env::new(), &BuiltinResolver),
+            Ok(Value::Int(42))
+        );
         // a non-bool condition is a clean error, not a panic
         assert!(matches!(
             eval(&e, &Env::new(), &BuiltinResolver),

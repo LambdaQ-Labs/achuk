@@ -226,11 +226,11 @@ pub const CacheStats = struct {
 };
 
 /// Get the platform-specific cache directory name.
-/// Returns "roc" on Unix and "Roc" on Windows (matches Rust implementation).
+/// Returns "claw" on Unix and "Claw" on Windows.
 pub fn getCacheDirName() []const u8 {
     return switch (builtin.target.os.tag) {
-        .windows => "Roc",
-        else => "roc",
+        .windows => "Claw",
+        else => "claw",
     };
 }
 

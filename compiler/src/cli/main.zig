@@ -1124,7 +1124,7 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8, std_io: 
         .test_cmd => |test_args| try rocTest(&ctx, test_args, args[0]),
         .repl => |repl_args| rocRepl(&ctx, repl_args),
         .glue => |glue_args| try rocGlue(&ctx, glue_args),
-        .version => ctx.io.stdout().print("Roc compiler version {s}\n", .{build_options.compiler_version}),
+        .version => ctx.io.stdout().print("Claw compiler (clawc) version {s}\n", .{build_options.compiler_version}),
         .docs => |docs_args| rocDocs(&ctx, docs_args),
         .experimental_lsp => |lsp_args| try lsp.runWithStdIo(gpa, std_io, .{
             .transport = lsp_args.debug_io,

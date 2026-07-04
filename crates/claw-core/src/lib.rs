@@ -8,6 +8,7 @@
 
 pub mod interp;
 pub mod parse;
+pub mod render;
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;

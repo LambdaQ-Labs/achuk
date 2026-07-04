@@ -198,8 +198,22 @@ fn db_cmd(db_path: &Path, args: &[String]) -> anyhow::Result<()> {
             }
         }
         Some("render") => {
-            let h = resolve_ref(&cdb, need(args, 1, "name|hash")?)?;
-            println!("{}", serde_json::to_string_pretty(&cdb.get(&h)?)?);
+            let name_or_hash = need(args, 1, "name|hash")?;
+            let h = resolve_ref(&cdb, name_or_hash)?;
+            let def = cdb.get(&h)?;
+            // `--claw` renders the human-readable .claw projection; default = JSON.
+            if args.iter().any(|a| a == "--claw") {
+                let name = cdb
+                    .resolve(name_or_hash)
+                    .ok()
+                    .and(Some(name_or_hash.clone()));
+                println!(
+                    "{}",
+                    claw_core::render::render_def(name.as_deref().unwrap_or("_"), &def)
+                );
+            } else {
+                println!("{}", serde_json::to_string_pretty(&def)?);
+            }
         }
         Some("ingest") => {
             let file = need(args, 1, "path to .claw file")?;

@@ -51,7 +51,7 @@ The research is blunt: [every prior "AI-first" language died](docs/master-plan.m
 ## Quickstart
 
 ```bash
-git clone https://github.com/LambdaQ/claw && cd claw
+git clone https://github.com/lambdaq-labs/claw && cd claw
 cargo test --workspace            # the toolchain — ~60 tests, all green
 cd compiler && zig build roc      # the compiler → clawc
 

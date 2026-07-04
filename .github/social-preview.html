@@ -1,0 +1,64 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:1280px; height:640px; overflow:hidden; }
+  body {
+    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    background: radial-gradient(1200px 700px at 78% 18%, #1b2a4a 0%, #0b1020 55%, #070a14 100%);
+    color: #e8ecf4;
+    display:flex; flex-direction:column; justify-content:center;
+    padding: 76px 88px;
+    position:relative;
+  }
+  .brand { display:flex; align-items:center; gap:20px; margin-bottom:30px; }
+  .paw {
+    width:66px; height:66px; border-radius:18px;
+    background: linear-gradient(135deg, #7c5cff, #4f8cff);
+    display:flex; align-items:center; justify-content:center;
+    font-size:38px; box-shadow: 0 8px 40px rgba(124,92,255,.45);
+  }
+  .name { font-size:52px; font-weight:800; letter-spacing:-1px; }
+  .name .dim { color:#8b95ad; font-weight:600; font-size:26px; margin-left:14px; }
+  h1 {
+    font-size:66px; line-height:1.05; font-weight:800; letter-spacing:-1.5px;
+    max-width: 760px;
+  }
+  h1 .hl { color:#7c9dff; }
+  .sub { margin-top:22px; font-size:27px; color:#aab4c8; font-weight:500; }
+  .stat {
+    position:absolute; right:88px; top:150px;
+    text-align:center;
+  }
+  .stat .nums { font-size:120px; font-weight:850; letter-spacing:-3px;
+    background:linear-gradient(180deg,#fff,#9fb4ff); -webkit-background-clip:text; background-clip:text; color:transparent; line-height:1; }
+  .stat .lbl { margin-top:10px; font-size:22px; color:#9aa6be; letter-spacing:.5px; }
+  .foot {
+    position:absolute; left:88px; bottom:60px;
+    display:flex; gap:14px; align-items:center; font-size:21px; color:#7f8aa3;
+  }
+  .pill { padding:8px 16px; border:1px solid #2a3654; border-radius:999px; color:#b9c3da; font-size:18px; }
+</style>
+</head>
+<body>
+  <div class="brand">
+    <div class="paw">🐾</div>
+    <div class="name">Claw <span class="dim">by LambdaQ Labs</span></div>
+  </div>
+  <h1>The language where AI <span class="hl">can't hallucinate</span> APIs.</h1>
+  <div class="sub">Not "less." <b>Can't.</b> — it's ungeneratable, by construction.</div>
+
+  <div class="stat">
+    <div class="nums">38→0</div>
+    <div class="lbl">hallucinated symbols · real benchmark</div>
+  </div>
+
+  <div class="foot">
+    <span class="pill">code-as-database</span>
+    <span class="pill">constrained decoding</span>
+    <span class="pill">forked from Roc</span>
+  </div>
+</body>
+</html>

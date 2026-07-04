@@ -55,8 +55,12 @@ fn wrapper_example(name: &str, hash: &Hash, params: &[Type], ret: &Type) -> Opti
     }
     // Param pool p0.. matches the Def-JSON output protocol + GBNF grammar.
     let param_names: Vec<String> = (0..params.len()).map(|i| format!("p{i}")).collect();
+    // Reference the scope symbol BY NAME (Var), not by content hash (Ref):
+    // a model can reproduce a name but never guess a hash. This keeps the
+    // corpus in the same protocol the benchmark/eval use.
+    let _ = hash;
     let body = Expr::App {
-        func: Box::new(Expr::Ref(hash.clone())),
+        func: Box::new(Expr::Var(name.into())),
         args: param_names.iter().map(|p| Expr::Var(p.clone())).collect(),
     };
     let def = Def::new(
@@ -160,10 +164,11 @@ fn compose_examples(cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
             if claw_core::unify(gb, fb).is_none() {
                 continue;
             }
+            let _ = (fh, gh); // reference by name, not hash (see wrapper_example)
             let body = Expr::App {
-                func: Box::new(Expr::Ref(fh.clone())),
+                func: Box::new(Expr::Var(fname.clone())),
                 args: vec![Expr::App {
-                    func: Box::new(Expr::Ref(gh.clone())),
+                    func: Box::new(Expr::Var(gname.clone())),
                     args: vec![Expr::Var("p0".into())],
                 }],
             };

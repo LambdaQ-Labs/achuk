@@ -53,40 +53,79 @@ The research is blunt: [every prior "AI-first" language died](docs/master-plan.m
 
 ## Quickstart
 
+Install the self-contained toolchain (no system compiler or linker needed):
+
+```bash
+curl -fsSL https://clawlang.dev/install.sh | sh
+```
+
+Write and run a program:
+
+```bash
+claw new hello
+cd hello
+claw run                 # → Hello, world!
+```
+
+Let an AI agent write Claw for you — grounded in your *real* code so it can't
+invent APIs:
+
+```bash
+claw mcp install         # registers the MCP server with Claude Code
+claw index               # (re)index your project's real symbols
+```
+
+Now Claude Code can call `claw_symbols` / `claw_candidates` / `claw_mask` and
+only ever reference functions that actually exist.
+
+**New here?** Read [Getting started](docs/getting-started.md) and
+[the language in 10 minutes](docs/tour.md), or browse runnable
+[`examples/`](examples).
+
+<details>
+<summary>Building from source / the research toolchain</summary>
+
 ```bash
 git clone https://github.com/LambdaQ-Labs/claw && cd claw
-cargo test --workspace            # the toolchain — 100+ tests, all green
-cd compiler && zig build roc      # the compiler → clawc
+cargo test --workspace                 # the Rust toolchain — all green
+cd compiler && zig build roc           # the compiler → clawc
+sh scripts/package.sh v0.1.0           # build a release tarball → dist/
 
-# type-check Claw code
-cargo run -p claw-cli -- check examples/hello.claw
-
-# the magic: ask the code-as-database what really exists
+# the code-as-database, directly
 cargo run -p claw-cli -- db candidates "Nat, Nat -> a"
-cargo run -p claw-cli -- db mask "Nat, Nat -> a"    # → the grammar that makes hallucination impossible
-cargo run -p claw-cli -- db render double --claw    # a definition as .claw source
+cargo run -p claw-cli -- db mask "Nat, Nat -> a"   # the grammar that makes hallucination impossible
 
-# transpile Claw → Rust, and generate a self-verifying training corpus
+# benchmark any model (blind vs +Claw's symbol table)
+export CLAW_MODEL_URL=… CLAW_MODEL_NAME=… CLAW_MODEL_KEY=…
+cargo run -p claw-bench-runner -- run --arm A1 --tasks bench/tasks
+
+# transpile Claw → Rust; generate a self-verifying training corpus
 cargo run -p claw-cli -- emit-rust defs.json
 cargo run -p claw-cli -- corpus gen --stdlib > corpus.jsonl
 ```
 
-Point any model at the benchmark and watch the hallucinations vanish:
+Or open [`playground/index.html`](playground/index.html) — an in-browser demo.
 
-```bash
-export CLAW_MODEL_URL=… CLAW_MODEL_NAME=… CLAW_MODEL_KEY=…
-cargo run -p claw-bench-runner -- run --arm A0 --tasks bench/tasks  # blind
-cargo run -p claw-bench-runner -- run --arm A1 --tasks bench/tasks  # + Claw's symbol table
-```
+</details>
 
-Drive Claw from an agent (MCP) or an editor (LSP):
+## What works today
 
-```bash
-cargo run -p claw-mcp   # Model Context Protocol server (claw_symbols/candidates/mask)
-cargo run -p claw-lsp   # Language Server (completion + hover from the CDB)
-```
+| Capability | State |
+|---|---|
+| Compile & run real programs (self-contained: bundled platform + linker) | ✅ works |
+| `claw new` / `run` / project model | ✅ works |
+| Print, compute, command-line args, `Str`/`Num`/`List` builtins | ✅ works |
+| AI guardrail over your **real** symbols (`claw index` + MCP: symbols/candidates/mask) | ✅ works |
+| Decode-time grammar that makes out-of-scope calls ungeneratable | ✅ works (Def-JSON protocol) |
+| Bundled fine-tuned model (0→98% hallucination-free, [P4 gate](docs/p4-gate-2026-07-04.md)) | 🧪 research (separate download) |
+| Contracts / effects / `emit-rust` | 🧪 experimental (synthetic AST) |
+| File / stdin / network I/O | 🗺️ roadmap (v0.1.1) |
+| AI understands whole programs (bodies, call-graph, contracts on your code) | 🗺️ roadmap (v0.2) |
+| Windows | 🗺️ roadmap |
 
-Or just open [`playground/index.html`](playground/index.html) — an interactive, in-browser demo of the whole idea.
+The honest boundary: the language **runs today**, and the AI guardrail works
+at the **symbol level** on your real code. Deeper program understanding
+(lowering real bodies + call-graph into the database) is the v0.2 work.
 
 ## How it works
 

@@ -1,0 +1,14 @@
+# Pattern matching + list transformation.
+# Run: claw run classify.claw
+classify = |n| match n {
+    0 => "zero"
+    1 => "one"
+    _ => "many"
+}
+
+main! = |_args| {
+    nums = [0, 1, 2, 3]
+    labels = nums.map(classify)
+    echo!(Str.join_with(labels, ", "))
+    Ok({})
+}

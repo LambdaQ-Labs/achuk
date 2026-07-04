@@ -1,0 +1,18 @@
+# FizzBuzz — functions, if/else, and the modulo operator.
+# Run: claw run fizzbuzz.claw
+fizz = |n| {
+    rem3 = n % 3
+    rem5 = n % 5
+    if rem3 == 0 and rem5 == 0 "FizzBuzz"
+    else if rem3 == 0 "Fizz"
+    else if rem5 == 0 "Buzz"
+    else n.to_str()
+}
+
+main! = |_args| {
+    echo!(fizz(3))
+    echo!(fizz(5))
+    echo!(fizz(15))
+    echo!(fizz(7))
+    Ok({})
+}

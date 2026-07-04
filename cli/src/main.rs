@@ -458,6 +458,18 @@ fn find_clawc() -> anyhow::Result<PathBuf> {
     find_tool("clawc")
 }
 
+/// Reverse index hash → bound name, for human-readable graph output.
+fn hash_names(cdb: &Cdb) -> anyhow::Result<std::collections::HashMap<String, String>> {
+    Ok(cdb.symbols()?.into_iter().map(|(n, h)| (h.0, n)).collect())
+}
+
+fn label_hash(names: &std::collections::HashMap<String, String>, h: &Hash) -> String {
+    match names.get(&h.0) {
+        Some(name) => format!("{name}  {h}"),
+        None => h.0.clone(),
+    }
+}
+
 /// Resolve a CLI reference: try as bound name first, then as full hash.
 fn resolve_ref(cdb: &Cdb, r: &str) -> anyhow::Result<Hash> {
     if let Ok(h) = cdb.resolve(r) {
@@ -503,14 +515,16 @@ fn db_cmd(db_path: &Path, args: &[String]) -> anyhow::Result<()> {
         }
         Some("callers") => {
             let h = resolve_ref(&cdb, need(args, 1, "name|hash")?)?;
+            let names = hash_names(&cdb)?;
             for caller in cdb.callers(&h)? {
-                println!("{}", caller.0);
+                println!("{}", label_hash(&names, &caller));
             }
         }
         Some("deps") => {
             let h = resolve_ref(&cdb, need(args, 1, "name|hash")?)?;
+            let names = hash_names(&cdb)?;
             for dep in cdb.deps(&h)? {
-                println!("{}", dep.0);
+                println!("{}", label_hash(&names, &dep));
             }
         }
         Some("render") => {

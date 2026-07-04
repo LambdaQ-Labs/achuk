@@ -12467,7 +12467,185 @@ fn getRootModuleEnv(build_env: *BuildEnv, path: []const u8) ?*ModuleEnv {
     return fallback;
 }
 
-/// Emit each top-level def as JSON: {"name","type","effectful"}.
+// --- body lowering: CIR expression -> claw-core Expr JSON --------------
+// Emits the externally-tagged Expr shape the Rust side deserializes:
+// {"Var":n} {"Lit":{"Int":n}} {"Lit":{"Str":s}} {"Lam":{params,body}}
+// {"App":{func,args}} {"If":{cond,then,els}} {"Let":{name,value,body}}.
+// References (to other defs or params) are emitted as Var(name); the Rust
+// side links call-graph edges by resolving those names. Forms the small
+// AST can't represent are approximated (binops/methods -> App) or emitted
+// as an opaque Str marker, so lowering is total.
+
+fn edPName(env: *ModuleEnv, p: CIR.Pattern.Idx) []const u8 {
+    return switch (env.store.getPattern(p)) {
+        .assign => |a| env.getIdentText(a.ident),
+        .as => |a| env.getIdentText(a.ident),
+        else => "_",
+    };
+}
+
+fn edJsonStr(w: anytype, s: []const u8) void {
+    std.json.Stringify.value(s, .{}, w) catch {};
+}
+
+fn edVar(w: anytype, name: []const u8) void {
+    w.writeAll("{\"Var\":") catch {};
+    edJsonStr(w, name);
+    w.writeAll("}") catch {};
+}
+
+fn edLitStr(w: anytype, s: []const u8) void {
+    w.writeAll("{\"Lit\":{\"Str\":") catch {};
+    edJsonStr(w, s);
+    w.writeAll("}}") catch {};
+}
+
+fn edMethodCall(gpa: Allocator, env: *ModuleEnv, receiver: CIR.Expr.Idx, method: []const u8, args: []CIR.Expr.Idx, w: anytype) void {
+    w.writeAll("{\"App\":{\"func\":") catch {};
+    edVar(w, method);
+    w.writeAll(",\"args\":[") catch {};
+    emitExprJson(gpa, env, receiver, w);
+    for (args) |a| {
+        w.writeAll(",") catch {};
+        emitExprJson(gpa, env, a, w);
+    }
+    w.writeAll("]}}") catch {};
+}
+
+fn edIfChain(gpa: Allocator, env: *ModuleEnv, branches: []CIR.Expr.IfBranch.Idx, final_else: CIR.Expr.Idx, w: anytype) void {
+    if (branches.len == 0) {
+        emitExprJson(gpa, env, final_else, w);
+        return;
+    }
+    const br = env.store.getIfBranch(branches[0]);
+    w.writeAll("{\"If\":{\"cond\":") catch {};
+    emitExprJson(gpa, env, br.cond, w);
+    w.writeAll(",\"then\":") catch {};
+    emitExprJson(gpa, env, br.body, w);
+    w.writeAll(",\"els\":") catch {};
+    edIfChain(gpa, env, branches[1..], final_else, w);
+    w.writeAll("}}") catch {};
+}
+
+fn edBlock(gpa: Allocator, env: *ModuleEnv, stmts: []CIR.Statement.Idx, final_expr: CIR.Expr.Idx, w: anytype) void {
+    if (stmts.len == 0) {
+        emitExprJson(gpa, env, final_expr, w);
+        return;
+    }
+    switch (env.store.getStatement(stmts[0])) {
+        .s_decl => |d| {
+            w.writeAll("{\"Let\":{\"name\":") catch {};
+            edJsonStr(w, edPName(env, d.pattern));
+            w.writeAll(",\"value\":") catch {};
+            emitExprJson(gpa, env, d.expr, w);
+            w.writeAll(",\"body\":") catch {};
+            edBlock(gpa, env, stmts[1..], final_expr, w);
+            w.writeAll("}}") catch {};
+        },
+        .s_expr => |e| {
+            w.writeAll("{\"Let\":{\"name\":\"_\",\"value\":") catch {};
+            emitExprJson(gpa, env, e.expr, w);
+            w.writeAll(",\"body\":") catch {};
+            edBlock(gpa, env, stmts[1..], final_expr, w);
+            w.writeAll("}}") catch {};
+        },
+        else => edBlock(gpa, env, stmts[1..], final_expr, w),
+    }
+}
+
+fn emitExprJson(gpa: Allocator, env: *ModuleEnv, expr_idx: CIR.Expr.Idx, w: anytype) void {
+    const ex = env.store.getExpr(expr_idx);
+    switch (ex) {
+        .e_num => |n| w.print("{{\"Lit\":{{\"Int\":{d}}}}}", .{std.math.cast(i64, n.value.toI128()) orelse 0}) catch {},
+        .e_typed_int => |n| w.print("{{\"Lit\":{{\"Int\":{d}}}}}", .{std.math.cast(i64, n.value.toI128()) orelse 0}) catch {},
+        .e_str => |e| {
+            const segs = env.store.sliceExpr(e.span);
+            var all_literal = true;
+            for (segs) |s| {
+                if (std.meta.activeTag(env.store.getExpr(s)) != .e_str_segment) {
+                    all_literal = false;
+                    break;
+                }
+            }
+            if (all_literal) {
+                var buf = std.ArrayList(u8).empty;
+                defer buf.deinit(gpa);
+                for (segs) |s| {
+                    switch (env.store.getExpr(s)) {
+                        .e_str_segment => |seg| buf.appendSlice(gpa, env.getString(seg.literal)) catch {},
+                        else => {},
+                    }
+                }
+                edLitStr(w, buf.items);
+            } else {
+                // interpolation -> App(Var("Str.concat"), [parts])
+                w.writeAll("{\"App\":{\"func\":") catch {};
+                edVar(w, "Str.concat");
+                w.writeAll(",\"args\":[") catch {};
+                var first = true;
+                for (segs) |s| {
+                    if (!first) w.writeAll(",") catch {};
+                    first = false;
+                    switch (env.store.getExpr(s)) {
+                        .e_str_segment => |seg| edLitStr(w, env.getString(seg.literal)),
+                        else => emitExprJson(gpa, env, s, w),
+                    }
+                }
+                w.writeAll("]}}") catch {};
+            }
+        },
+        .e_str_segment => |seg| edLitStr(w, env.getString(seg.literal)),
+        .e_lookup_local => |lk| edVar(w, edPName(env, lk.pattern_idx)),
+        .e_lookup_external => |lk| edVar(w, env.getIdent(lk.ident_idx)),
+        .e_lambda => |lam| {
+            w.writeAll("{\"Lam\":{\"params\":[") catch {};
+            var first = true;
+            for (env.store.slicePatterns(lam.args)) |p| {
+                if (!first) w.writeAll(",") catch {};
+                first = false;
+                edJsonStr(w, edPName(env, p));
+            }
+            w.writeAll("],\"body\":") catch {};
+            emitExprJson(gpa, env, lam.body, w);
+            w.writeAll("}}") catch {};
+        },
+        .e_closure => |clo| emitExprJson(gpa, env, clo.lambda_idx, w),
+        .e_call => |call| {
+            w.writeAll("{\"App\":{\"func\":") catch {};
+            emitExprJson(gpa, env, call.func, w);
+            w.writeAll(",\"args\":[") catch {};
+            var first = true;
+            for (env.store.sliceExpr(call.args)) |a| {
+                if (!first) w.writeAll(",") catch {};
+                first = false;
+                emitExprJson(gpa, env, a, w);
+            }
+            w.writeAll("]}}") catch {};
+        },
+        .e_if => |iff| edIfChain(gpa, env, env.store.sliceIfBranches(iff.branches), iff.final_else, w),
+        .e_block => |blk| edBlock(gpa, env, env.store.sliceStatements(blk.stmts), blk.final_expr, w),
+        .e_binop => |b| {
+            w.writeAll("{\"App\":{\"func\":") catch {};
+            edVar(w, @tagName(b.op));
+            w.writeAll(",\"args\":[") catch {};
+            emitExprJson(gpa, env, b.lhs, w);
+            w.writeAll(",") catch {};
+            emitExprJson(gpa, env, b.rhs, w);
+            w.writeAll("]}}") catch {};
+        },
+        .e_method_call => |m| edMethodCall(gpa, env, m.receiver, env.getIdent(m.method_name), env.store.sliceExpr(m.args), w),
+        .e_dispatch_call => |m| edMethodCall(gpa, env, m.receiver, env.getIdent(m.method_name), env.store.sliceExpr(m.args), w),
+        .e_field_access => |f| emitExprJson(gpa, env, f.receiver, w),
+        .e_unary_minus => |u| emitExprJson(gpa, env, u.expr, w),
+        .e_unary_not => |u| emitExprJson(gpa, env, u.expr, w),
+        .e_dbg => |u| emitExprJson(gpa, env, u.expr, w),
+        .e_return => |u| emitExprJson(gpa, env, u.expr, w),
+        .e_expect => |u| emitExprJson(gpa, env, u.body, w),
+        else => edLitStr(w, "<opaque>"),
+    }
+}
+
+/// Emit each top-level def as JSON: {"name","type","effectful","body"}.
 fn emitDefsJson(ctx: *CliCtx, build_env: *BuildEnv, args: cli_args.DefsArgs) RocCheckError!void {
     const stdout = ctx.io.stdout();
     const env = getRootModuleEnv(build_env, args.path) orelse {
@@ -12500,7 +12678,9 @@ fn emitDefsJson(ctx: *CliCtx, build_env: *BuildEnv, args: cli_args.DefsArgs) Roc
         std.json.Stringify.value(name, .{}, stdout) catch {};
         stdout.writeAll(",\"type\":") catch {};
         std.json.Stringify.value(type_str, .{}, stdout) catch {};
-        stdout.print(",\"effectful\":{}}}", .{effectful}) catch {};
+        stdout.print(",\"effectful\":{},\"body\":", .{effectful}) catch {};
+        emitExprJson(ctx.gpa, env, def.expr, stdout);
+        stdout.writeAll("}") catch {};
     }
     stdout.writeAll("]\n") catch {};
     ctx.io.flush();

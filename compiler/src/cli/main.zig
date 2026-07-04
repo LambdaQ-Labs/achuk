@@ -998,7 +998,7 @@ pub fn main(init: std.process.Init) Allocator.Error!void {
 
 fn parsedArgsStartBackgroundCleanup(args: cli_args.CliArgs) bool {
     return switch (args) {
-        .run, .build, .check, .test_cmd, .docs, .glue, .experimental_lsp => true,
+        .run, .build, .check, .defs, .test_cmd, .docs, .glue, .experimental_lsp => true,
         .fmt, .bundle, .unbundle, .repl, .version, .help, .licenses, .problem => false,
     };
 }
@@ -1060,6 +1060,7 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8, std_io: 
         .run => .run,
         .build => .build,
         .check => .check,
+        .defs => .check,
         .test_cmd => .test_cmd,
         .fmt => .fmt,
         .bundle => .bundle,
@@ -1112,6 +1113,7 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8, std_io: 
             };
         },
         .check => |check_args| rocCheck(&ctx, check_args, args[0]),
+        .defs => |defs_args| rocDefs(&ctx, defs_args, args[0]),
         .build => |build_args| rocBuild(&ctx, build_args, args[0]) catch |err| switch (err) {
             error.CliError => {
                 // Problems already recorded in context, render them below
@@ -12437,6 +12439,105 @@ fn rocCheck(ctx: *CliCtx, args: cli_args.CheckArgs, arg0: []const u8) RocCheckEr
     reporter.finish();
 
     return finishRocCheck(ctx, args, stdout, stderr, timer_start_ns, &check_result);
+}
+
+fn checkArgsFromDefs(a: cli_args.DefsArgs) cli_args.CheckArgs {
+    return .{ .path = a.path, .main = a.main, .resolve_limits = a.resolve_limits };
+}
+
+/// Find the checked ModuleEnv for the analyzed file across all schedulers,
+/// preferring the module whose path matches the input (LSP getModuleEnv
+/// pattern), falling back to the first module that has one.
+fn getRootModuleEnv(build_env: *BuildEnv, path: []const u8) ?*ModuleEnv {
+    var fallback: ?*ModuleEnv = null;
+    var sched_it = build_env.schedulers.iterator();
+    while (sched_it.next()) |entry| {
+        const sched = entry.value_ptr.*;
+        for (sched.modules.items) |*module_state| {
+            if (module_state.moduleEnv()) |env| {
+                if (std.mem.endsWith(u8, module_state.path, path) or
+                    std.mem.endsWith(u8, path, module_state.path))
+                {
+                    return env;
+                }
+                if (fallback == null) fallback = env;
+            }
+        }
+    }
+    return fallback;
+}
+
+/// Emit each top-level def as JSON: {"name","type","effectful"}.
+fn emitDefsJson(ctx: *CliCtx, build_env: *BuildEnv, args: cli_args.DefsArgs) RocCheckError!void {
+    const stdout = ctx.io.stdout();
+    const env = getRootModuleEnv(build_env, args.path) orelse {
+        stdout.writeAll("[]\n") catch {};
+        ctx.io.flush();
+        return;
+    };
+
+    var tw = try env.initTypeWriter();
+    defer tw.deinit();
+
+    stdout.writeAll("[") catch {};
+    var first = true;
+    for (env.store.sliceDefs(env.all_defs)) |def_idx| {
+        const def = env.store.getDef(def_idx);
+        const name = switch (env.store.getPattern(def.pattern)) {
+            .assign => |p| env.getIdentText(p.ident),
+            else => continue, // skip destructuring patterns
+        };
+        const def_var = ModuleEnv.varFrom(def_idx);
+        tw.write(def_var, .one_line) catch continue;
+        const type_str = tw.get();
+        const effectful = switch (env.types.resolveVar(def_var).desc.content) {
+            .structure => |ft| ft == .fn_effectful,
+            else => false,
+        };
+        if (!first) stdout.writeAll(",") catch {};
+        first = false;
+        stdout.writeAll("{\"name\":") catch {};
+        std.json.Stringify.value(name, .{}, stdout) catch {};
+        stdout.writeAll(",\"type\":") catch {};
+        std.json.Stringify.value(type_str, .{}, stdout) catch {};
+        stdout.print(",\"effectful\":{}}}", .{effectful}) catch {};
+    }
+    stdout.writeAll("]\n") catch {};
+    ctx.io.flush();
+}
+
+fn rocDefs(ctx: *CliCtx, args: cli_args.DefsArgs, arg0: []const u8) RocCheckError!void {
+    _ = arg0;
+    const stderr = ctx.io.stderr();
+    const cache_config = CacheConfig{ .enabled = true, .verbose = false, .roc_ctx = ctx.coreCtx() };
+
+    // Headerless default app vs a regular file — both give a preserved
+    // build env holding the canonicalized + type-checked modules.
+    if (try readDefaultAppSource(ctx, args.path)) |source| {
+        var default_result = rocCheckDefaultAppPreserved(
+            ctx,
+            checkArgsFromDefs(args),
+            source,
+            cache_config,
+            false,
+        ) catch |err| return handleProcessFileError(err, stderr, args.path);
+        defer default_result.deinit(ctx.gpa);
+        return emitDefsJson(ctx, &default_result.result_with_env.build_env, args);
+    }
+
+    var result_with_env = checkFileWithBuildEnvPreserved(
+        ctx,
+        args.path,
+        args.main,
+        false,
+        cache_config,
+        null,
+        resolutionConfigFromLimits(args.resolve_limits),
+        null,
+        false,
+    ) catch |err| return handleProcessFileError(err, stderr, args.path);
+    defer result_with_env.deinit(ctx.gpa);
+    return emitDefsJson(ctx, &result_with_env.build_env, args);
 }
 
 fn printTimingBreakdown(writer: anytype, timing: ?CheckTimingInfo) void {

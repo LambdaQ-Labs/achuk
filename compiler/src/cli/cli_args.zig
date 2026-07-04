@@ -13,6 +13,7 @@ pub const ParseError = Allocator.Error || std.Io.Dir.OpenError || std.Io.Dir.Ite
 pub const CliArgs = union(enum) {
     run: RunArgs,
     check: CheckArgs,
+    defs: DefsArgs,
     build: BuildArgs,
     fmt: FormatArgs,
     test_cmd: TestArgs,
@@ -141,6 +142,14 @@ pub const CheckArgs = struct {
     resolve_limits: ResolveLimitArgs = .{}, // package download size limits
 };
 
+/// Arguments for `roc defs` — emit top-level definitions + inferred types.
+pub const DefsArgs = struct {
+    path: []const u8,
+    main: ?[]const u8 = null,
+    json: bool = false,
+    resolve_limits: ResolveLimitArgs = .{},
+};
+
 /// Arguments for `roc build`
 pub const BuildArgs = struct {
     path: []const u8, // the path to the roc file to be built
@@ -247,6 +256,7 @@ pub fn parse(alloc: mem.Allocator, std_io: std.Io, args: []const []const u8) Par
         return CliArgs{ .help = run_not_a_command_help };
     }
     if (mem.eql(u8, args[0], "check")) return parseCheck(args[1..]);
+    if (mem.eql(u8, args[0], "defs")) return parseDefs(args[1..]);
     if (mem.eql(u8, args[0], "build")) return parseBuild(args[1..]);
     if (mem.eql(u8, args[0], "bundle")) return try parseBundle(alloc, args[1..]);
     if (mem.eql(u8, args[0], "unbundle")) return try parseUnbundle(alloc, std_io, args[1..]);
@@ -311,6 +321,50 @@ const run_not_a_command_help =
     \\Use 'roc help' to see all available commands.
     \\
 ;
+
+fn parseDefs(args: []const []const u8) CliArgs {
+    var path: ?[]const u8 = null;
+    var main: ?[]const u8 = null;
+    var json: bool = false;
+    var resolve_limits: ResolveLimitArgs = .{};
+    for (args) |arg| {
+        if (isHelpFlag(arg)) {
+            return CliArgs{ .help =
+            \\Emit top-level definitions and their inferred types.
+            \\
+            \\Usage: roc defs [--json] [--main=<main>] [ROC_FILE]
+            \\
+            \\Options:
+            \\      --json         Emit a JSON array of {name, type, effectful}
+            \\      --main=<main>  The app/package module to resolve dependencies from
+            };
+        } else if (mem.eql(u8, arg, "--json")) {
+            json = true;
+        } else if (mem.startsWith(u8, arg, "--main")) {
+            if (getFlagValue(arg)) |value| {
+                main = value;
+            } else {
+                return CliArgs{ .problem = ArgProblem{ .missing_flag_value = .{ .flag = "--main" } } };
+            }
+        } else if (mem.startsWith(u8, arg, "--max-package-mb") or mem.startsWith(u8, arg, "--max-transitive-mb")) {
+            switch (parseResolveLimitFlag(arg, &resolve_limits)) {
+                .problem => |problem| return CliArgs{ .problem = problem },
+                else => {},
+            }
+        } else {
+            if (path != null) {
+                return CliArgs{ .problem = ArgProblem{ .unexpected_argument = .{ .cmd = "defs", .arg = arg } } };
+            }
+            path = arg;
+        }
+    }
+    return CliArgs{ .defs = DefsArgs{
+        .path = path orelse "main.roc",
+        .main = main,
+        .json = json,
+        .resolve_limits = resolve_limits,
+    } };
+}
 
 fn parseCheck(args: []const []const u8) CliArgs {
     var path: ?[]const u8 = null;

@@ -565,115 +565,79 @@ fn need<'a>(args: &'a [String], i: usize, what: &str) -> anyhow::Result<&'a Stri
 }
 
 // ---------------------------------------------------------------------
-// Ingest: compiler -> CDB bridge (prototype)
+// Ingest: compiler -> CDB bridge
 // ---------------------------------------------------------------------
-// Wraps the source in a snapshot document, runs the vendored snapshot
-// tool (which canonicalizes + typechecks), and zips top-level def names
-// (CANONICALIZE section, `(d-let (p-assign (ident "name")))`) with their
-// inferred types (TYPES section, `(patt (type "sig"))`) by order.
-// Types that our prototype signature parser can't express yet (records,
-// tags) fall back to an opaque Named(raw) — still queryable by identity.
-// Replaced by a first-class `clawc defs --json` once we patch one in.
-
-/// Extract every quoted payload following `pat` occurrences in `text`.
-fn extract_quoted_after(text: &str, pat: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut rest = text;
-    while let Some(i) = rest.find(pat) {
-        rest = &rest[i + pat.len()..];
-        if let Some(q1) = rest.find('"') {
-            let after = &rest[q1 + 1..];
-            if let Some(q2) = after.find('"') {
-                out.push(after[..q2].to_string());
-                rest = &after[q2 + 1..];
-            }
-        }
-    }
-    out
-}
-
-/// Top-level def names: the first `(ident "...")` after each `(d-let`.
-fn extract_def_names(can_ir: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut rest = can_ir;
-    while let Some(i) = rest.find("(d-let") {
-        rest = &rest[i + 6..];
-        if let Some(j) = rest.find("(ident \"") {
-            let after = &rest[j + 8..];
-            if let Some(q) = after.find('"') {
-                out.push(after[..q].to_string());
-            }
-        }
-    }
-    out
-}
-
-fn section<'a>(doc: &'a str, header: &str) -> Option<&'a str> {
-    let start = doc.find(header)?;
-    let rest = &doc[start + header.len()..];
-    let end = rest.find("\n# ").unwrap_or(rest.len());
-    Some(&rest[..end])
-}
+// Runs `clawc defs --json <file>`, which canonicalizes + typechecks the
+// file and emits a JSON array of {name, type, effectful} for each
+// top-level def. Real names + inferred types + effect flag, structured —
+// no fragile markdown scraping. Types the prototype signature parser can't
+// express yet (records, tags) fall back to an opaque Named(raw), still
+// queryable by identity. Bodies stay a placeholder until real body-lowering
+// lands (the AST can now hold them; the compiler->AST lowering is next).
 
 fn ingest(cdb: &mut Cdb, file: &Path) -> anyhow::Result<usize> {
     use claw_core::{Expr, Lit, Type};
 
-    let source = std::fs::read_to_string(file)?;
+    #[derive(serde::Deserialize)]
+    struct DefEntry {
+        name: String,
+        #[serde(rename = "type")]
+        ty: String,
+        #[serde(default)]
+        effectful: bool,
+    }
 
-    // Build a snapshot document around the source and run the tool on it.
-    let snap_doc = format!(
-        "# META\n~~~ini\ndescription=claw db ingest\ntype=file\n~~~\n# SOURCE\n~~~roc\n{source}~~~\n"
-    );
-    let tmp = std::env::temp_dir().join(format!("claw-ingest-{}.md", std::process::id()));
-    std::fs::write(&tmp, &snap_doc)?;
-
-    let tool = find_tool("snapshot")?;
-    let out = std::process::Command::new(&tool).arg(&tmp).output()?;
+    let clawc = find_clawc()?;
+    let out = std::process::Command::new(&clawc)
+        .arg("defs")
+        .arg("--json")
+        .arg(file)
+        .output()?;
     anyhow::ensure!(
         out.status.success(),
-        "snapshot tool failed: {}",
+        "clawc defs failed for {}: {}",
+        file.display(),
         String::from_utf8_lossy(&out.stderr)
     );
 
-    // The tool rewrites the document in place with generated sections.
-    let doc = std::fs::read_to_string(&tmp)?;
-    let _ = std::fs::remove_file(&tmp);
-
-    let can = section(&doc, "# CANONICALIZE")
-        .ok_or_else(|| anyhow::anyhow!("no CANONICALIZE section in snapshot output"))?;
-    let types = section(&doc, "# TYPES")
-        .ok_or_else(|| anyhow::anyhow!("no TYPES section in snapshot output"))?;
-
-    let names = extract_def_names(can);
-    let sigs = extract_quoted_after(types, "(patt (type ");
+    // The JSON array is emitted on its own line; take the last `[`-prefixed
+    // line (the compiler may print diagnostics before it).
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let json = stdout
+        .lines()
+        .rev()
+        .find(|l| l.trim_start().starts_with('['))
+        .unwrap_or("[]")
+        .trim();
+    let entries: Vec<DefEntry> =
+        serde_json::from_str(json).map_err(|e| anyhow::anyhow!("parsing clawc defs json: {e}"))?;
     anyhow::ensure!(
-        !names.is_empty(),
+        !entries.is_empty(),
         "no top-level definitions found in {}",
         file.display()
     );
-    anyhow::ensure!(
-        names.len() == sigs.len(),
-        "defs/types mismatch: {} names vs {} types (destructuring patterns not yet supported)",
-        names.len(),
-        sigs.len()
-    );
 
     let mut count = 0;
-    for (name, sig) in names.iter().zip(&sigs) {
+    for e in &entries {
         // Prototype signature parser first; opaque fallback keeps ingest total.
-        let ty = parse_type(sig).unwrap_or_else(|_| Type::Named(sig.clone()));
-        // Body: opaque source marker for now (real AST lowering comes with
-        // the deeper compiler bridge). Unique per (file, name).
-        let body = Expr::Lit(Lit::Str(format!("{}::{name}", file.display())));
+        let ty = parse_type(&e.ty).unwrap_or_else(|_| Type::Named(e.ty.clone()));
+        // Effect row: the compiler's effectful flag becomes a visible effect.
+        let effects = if e.effectful {
+            vec!["Effect".to_string()]
+        } else {
+            vec![]
+        };
+        // Body: opaque source marker until real body-lowering lands.
+        let body = Expr::Lit(Lit::Str(format!("{}::{}", file.display(), e.name)));
         let def = Def {
             expr: body,
             ty,
-            effects: vec![],
+            effects,
             deprecated: false,
             doc: format!("ingested from {}", file.display()),
         };
         let h = cdb.put(&def)?;
-        cdb.bind(name, &h)?;
+        cdb.bind(&e.name, &h)?;
         count += 1;
     }
     Ok(count)

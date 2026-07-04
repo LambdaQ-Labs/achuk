@@ -1,0 +1,94 @@
+# Claw release pipelines (DroneCI, ci.hostingduty.com).
+# Linux-only runners cross-compile every target:
+#   - clawc: `zig build roc -Dtarget=<t>` (zig cross-compiles cleanly)
+#   - claw/claw-mcp/claw-lsp: `cargo build --target <rust-t>`
+# macOS Rust binaries need osxcross (or a mac runner) — that leg is built
+# on a Mac for now; Linux + Windows are covered here.
+#
+# Requires a `github_token` org/repo secret (release upload) once the
+# LambdaQ-Labs org grants this Drone OAuth app access.
+
+kind: pipeline
+type: docker
+name: linux-x64
+
+trigger:
+  event:
+    - tag
+    - custom
+    - push
+
+steps:
+  - name: build
+    image: rust:1-bookworm
+    commands:
+      - apt-get update && apt-get install -y curl xz-utils musl-tools zstd
+      # zig 0.16.0
+      - curl -fsSL https://ziglang.org/download/0.16.0/zig-linux-x86_64-0.16.0.tar.xz | tar -xJ -C /opt
+      - export PATH=/opt/zig-linux-x86_64-0.16.0:$PATH
+      - rustup target add x86_64-unknown-linux-musl
+      # compiler (clawc + snapshot), Linux x64
+      - cd compiler && zig build roc -Dtarget=x86_64-linux-musl && zig build build-snapshot-tool -Dtarget=x86_64-linux-musl && cd ..
+      # CLI binaries
+      - cargo build --release --target x86_64-unknown-linux-musl --bin claw --bin claw-mcp --bin claw-lsp
+      # package
+      - mkdir -p dist/bin
+      - cp target/x86_64-unknown-linux-musl/release/claw dist/bin/
+      - cp target/x86_64-unknown-linux-musl/release/claw-mcp dist/bin/
+      - cp target/x86_64-unknown-linux-musl/release/claw-lsp dist/bin/
+      - cp compiler/zig-out/bin/clawc dist/bin/
+      - cp compiler/zig-out/bin/snapshot dist/bin/
+      - "cd dist && tar -czf claw-${DRONE_TAG:-dev}-linux-x64.tar.gz bin && cd .."
+      - ls -la dist/
+
+  - name: release
+    image: plugins/github-release
+    settings:
+      api_key:
+        from_secret: github_token
+      files: dist/*.tar.gz
+      checksum: [sha256]
+    when:
+      event: [tag]
+
+---
+kind: pipeline
+type: docker
+name: windows-x64
+
+trigger:
+  event:
+    - tag
+    - custom
+    - push
+
+steps:
+  - name: build
+    image: rust:1-bookworm
+    commands:
+      - apt-get update && apt-get install -y curl xz-utils gcc-mingw-w64-x86-64 zip zstd
+      - curl -fsSL https://ziglang.org/download/0.16.0/zig-linux-x86_64-0.16.0.tar.xz | tar -xJ -C /opt
+      - export PATH=/opt/zig-linux-x86_64-0.16.0:$PATH
+      - rustup target add x86_64-pc-windows-gnu
+      # compiler, Windows x64
+      - cd compiler && zig build roc -Dtarget=x86_64-windows-gnu && zig build build-snapshot-tool -Dtarget=x86_64-windows-gnu && cd ..
+      # CLI binaries (mingw linker)
+      - export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc
+      - cargo build --release --target x86_64-pc-windows-gnu --bin claw --bin claw-mcp --bin claw-lsp
+      - mkdir -p dist/bin
+      - cp target/x86_64-pc-windows-gnu/release/claw.exe dist/bin/
+      - cp target/x86_64-pc-windows-gnu/release/claw-mcp.exe dist/bin/
+      - cp target/x86_64-pc-windows-gnu/release/claw-lsp.exe dist/bin/
+      - cp compiler/zig-out/bin/clawc.exe dist/bin/ || cp compiler/zig-out/bin/clawc dist/bin/clawc.exe
+      - "cd dist && zip -r claw-${DRONE_TAG:-dev}-windows-x64.zip bin && cd .."
+      - ls -la dist/
+
+  - name: release
+    image: plugins/github-release
+    settings:
+      api_key:
+        from_secret: github_token
+      files: dist/*.zip
+      checksum: [sha256]
+    when:
+      event: [tag]

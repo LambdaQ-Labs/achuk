@@ -105,8 +105,34 @@ main! = |_args| match risky() {
 }
 ```
 
+## Common gotchas
+
+A few sharp edges worth knowing early (all hit while writing the examples):
+
+- **Numbers default to a decimal type.** `21 * 2` prints `42.0`, and `%`
+  forces the decimal type. For clean integer output, annotate with `U64`
+  (or `I64`): `fizz : U64 -> Str`. That's why the numeric examples carry
+  type signatures.
+- **Type applications need parentheses:** write `List(U64)`, not `List U64`,
+  in a type annotation.
+- **A bare `[]` right after a one-line `if` mis-parses** (it looks like
+  indexing). Wrap it: `if n <= 0 ([]) else ...`.
+- **Multi-line `if / else if / else` wants a block.** Put it inside `{ }`
+  when it's a function body:
+  ```claw
+  is_prime = |n| {
+      if n < 2 False
+      else if has_divisor(n, 2) False
+      else True
+  }
+  ```
+- **No prefix `not` keyword.** Restructure with `if/else`, or use the
+  boolean the other way around.
+
 ## Where to go next
 
 - [Getting started](getting-started.md) — install and project setup.
-- [`examples/`](../examples) — hello, fizzbuzz, pattern matching, args.
+- [`examples/`](../examples) — hello, fizzbuzz, pattern matching, args, plus
+  three fuller programs: `stats` (descriptive statistics), `primes` (trial
+  division), and `gradebook` (averages + letter grades).
 - Let an agent write Claw for you: `claw mcp install` (see getting-started).

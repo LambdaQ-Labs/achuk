@@ -392,6 +392,85 @@ fn copy_dir(src: &Path, dst: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// `claw db eval --real <name> <args...>` — evaluate a def through the
+/// ACTUAL compiler (Roc's real interpreter), not the built-in one. Locates
+/// the def's source (recorded at ingest), builds a runner that prints
+/// `name(args)`, and runs it with `clawc`. This is the ground-truth
+/// evaluator; the built-in interp is the fast self-contained approximation.
+fn eval_real(cdb: &Cdb, name: &str, call_args: &[String]) -> anyhow::Result<()> {
+    // Recover the source file from the def's provenance ("ingested from …").
+    let h = cdb
+        .resolve(name)
+        .map_err(|_| anyhow::anyhow!("no such def: {name}"))?;
+    let def = cdb.get(&h)?;
+    let file = def
+        .doc
+        .strip_prefix("ingested from ")
+        .ok_or_else(|| anyhow::anyhow!("no source recorded for {name} (was it indexed?)"))?
+        .trim();
+    let source =
+        std::fs::read_to_string(file).map_err(|_| anyhow::anyhow!("source file gone: {file}"))?;
+
+    // Drop any existing `main!` so ours is the entry point.
+    let trimmed = match source.find("\nmain!") {
+        Some(i) => &source[..i],
+        None => source.strip_prefix("main!").map(|_| "").unwrap_or(&source),
+    };
+
+    // Format each argument: integer as-is, Uppercase word as a bare tag,
+    // anything else as a string literal.
+    let call = format!(
+        "{name}({})",
+        call_args
+            .iter()
+            .map(|a| {
+                if a.parse::<i64>().is_ok() || a.chars().next().is_some_and(|c| c.is_uppercase()) {
+                    a.clone()
+                } else {
+                    format!("{a:?}")
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+
+    let runner = format!(
+        "{trimmed}\n\nmain! = |_claw_eval| {{\n    echo!(Str.inspect({call}))\n    Ok({{}})\n}}\n"
+    );
+    let tmp = std::env::temp_dir().join(format!("claw-eval-{}.claw", std::process::id()));
+    std::fs::write(&tmp, runner)?;
+
+    let out = std::process::Command::new(find_clawc()?)
+        .arg(&tmp)
+        .output()?;
+    let _ = std::fs::remove_file(&tmp);
+    // The program's printed output is the signal — the last non-empty
+    // stdout line. (clawc exits non-zero merely for warnings, so the exit
+    // code isn't a reliable success gate; a real compile error yields no
+    // program output at all.)
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let result = stdout
+        .replace('\r', "\n")
+        .lines()
+        .rev()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or("")
+        .to_string();
+    anyhow::ensure!(
+        !result.is_empty(),
+        "real eval produced no output — a compile error?\n{}",
+        String::from_utf8_lossy(&out.stderr)
+            .replace('\r', "\n")
+            .lines()
+            .filter(|l| l.to_lowercase().contains("error") && !l.contains("0 error"))
+            .take(3)
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    println!("{result}");
+    Ok(())
+}
+
 /// The registry base URL: $CLAW_REGISTRY, else the local default.
 fn registry_url() -> String {
     std::env::var("CLAW_REGISTRY").unwrap_or_else(|_| "http://127.0.0.1:8888".into())
@@ -494,7 +573,10 @@ fn add_cmd(args: &[String]) -> anyhow::Result<()> {
     }
     let dep_line = format!("{name} = {{ version = \"{version}\", url = \"{url}\" }}\n");
     if let Some(pos) = toml.find("[dependencies]") {
-        let insert_at = toml[pos..].find('\n').map(|i| pos + i + 1).unwrap_or(toml.len());
+        let insert_at = toml[pos..]
+            .find('\n')
+            .map(|i| pos + i + 1)
+            .unwrap_or(toml.len());
         // drop any existing line for this package, then insert
         let mut kept: Vec<&str> = toml.lines().collect();
         kept.retain(|l| !l.trim_start().starts_with(&format!("{name} =")));
@@ -679,7 +761,10 @@ fn fmt_value(v: &claw_core::interp::Value) -> String {
             format!("{name}({})", a.join(", "))
         }
         Value::Record(m) => {
-            let fs: Vec<String> = m.iter().map(|(k, v)| format!("{k}: {}", fmt_value(v))).collect();
+            let fs: Vec<String> = m
+                .iter()
+                .map(|(k, v)| format!("{k}: {}", fmt_value(v)))
+                .collect();
             format!("{{ {} }}", fs.join(", "))
         }
         other => format!("{other:?}"),
@@ -828,9 +913,23 @@ fn db_cmd(db_path: &Path, args: &[String]) -> anyhow::Result<()> {
                 std::process::exit(1);
             }
         }
-        // Run a lowered definition straight from the database: apply the
-        // named function to integer arguments. Proves ingested bodies are
-        // executable — the substrate for running contracts on real code.
+        // Run a lowered definition from the database. Default: the built-in
+        // interpreter over the CDB's lowered AST (fast, self-contained).
+        // `--real`: run it through the *actual compiler* — the ground-truth
+        // evaluator — collapsing the interpreter/AST double (see the
+        // inheritance audit). Needs the def's source file.
+        Some("eval") if args.iter().any(|a| a == "--real") => {
+            // positional args after `eval`, ignoring the --real flag
+            let pos: Vec<String> = args[1..]
+                .iter()
+                .filter(|a| a.as_str() != "--real")
+                .cloned()
+                .collect();
+            let name = pos
+                .first()
+                .ok_or_else(|| anyhow::anyhow!("missing def name"))?;
+            return eval_real(&cdb, name, &pos[1..]);
+        }
         Some("eval") => {
             use claw_core::{interp, Expr};
             let name = need(args, 1, "def name")?;

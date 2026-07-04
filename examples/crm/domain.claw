@@ -13,9 +13,9 @@ advance = |stage| match stage {
 
 # Which stages are closed (no further movement).
 is_terminal = |stage| match stage {
-    Won => Bool.true
-    Lost => Bool.true
-    other => Bool.false
+    Won => Bool.True
+    Lost => Bool.True
+    other => Bool.False
 }
 
 # A numeric rank for a stage, for pipeline ordering / weighting.

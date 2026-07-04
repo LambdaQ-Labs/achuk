@@ -111,20 +111,20 @@ fn readFdInfoFromFile(allocator: std.mem.Allocator, io: std.Io) CoordinationErro
         return error.FdInfoReadFailed;
     };
 
-    // Verify we're in a roc temp directory structure: {temp}/roc/{version}/{random}
-    // The grandparent of the exe directory should be "roc"
+    // Verify we're in a claw temp directory structure: {temp}/claw/{version}/{random}
+    // The grandparent of the exe directory should be "claw"
     const version_dir = std.fs.path.dirname(exe_dir) orelse {
         std.log.err("Invalid executable path: missing version directory component", .{});
         return error.FdInfoReadFailed;
     };
-    const roc_dir = std.fs.path.dirname(version_dir) orelse {
-        std.log.err("Invalid executable path: missing roc directory component", .{});
+    const claw_dir = std.fs.path.dirname(version_dir) orelse {
+        std.log.err("Invalid executable path: missing claw directory component", .{});
         return error.FdInfoReadFailed;
     };
-    const roc_basename = std.fs.path.basename(roc_dir);
+    const claw_basename = std.fs.path.basename(claw_dir);
 
-    if (!std.mem.eql(u8, roc_basename, "roc")) {
-        std.log.err("Unexpected directory structure: expected 'roc' grandparent, got '{s}'", .{roc_basename});
+    if (!std.mem.eql(u8, claw_basename, "claw")) {
+        std.log.err("Unexpected directory structure: expected 'claw' grandparent, got '{s}'", .{claw_basename});
         return error.FdInfoReadFailed;
     }
 

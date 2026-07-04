@@ -1,0 +1,3 @@
+Env := [].{
+    get! : Str => Str
+}

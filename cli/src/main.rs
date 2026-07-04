@@ -71,6 +71,10 @@ fn real_main() -> anyhow::Result<()> {
         // Register the MCP server with an agent (Claude Code) so it writes
         // Claw grounded in the project's real symbols.
         Some("mcp") if args.get(1).map(String::as_str) == Some("install") => mcp_install_cmd(),
+        // Package manager: publish this package to the registry, or add a
+        // dependency from the registry to this project.
+        Some("publish") => publish_cmd(&args[1..]),
+        Some("add") => add_cmd(&args[1..]),
         _ => {
             eprintln!(
                 "claw — the Claw toolchain\n\nusage:\n  claw new <name>                              scaffold a new project\n  claw run [file.claw]                         run a program (default: main.claw)\n  claw build|check|fmt|test|repl <file.claw>   compiler passthrough\n  claw [--db <file>] db <subcommand>           code-as-database\n  claw emit-rust <defs.json>                    transpile Def-JSON → Rust\n  claw [--db <file>] corpus gen [--stdlib]      synthetic SFT corpus → JSONL\n\ndb subcommands:\n  symbols | put | bind <name> <hash> | resolve <name> | ingest <file.claw>\n  candidates \"<type>\" | callers <ref> | deps <ref> | render <ref> | mask \"<type>\""
@@ -385,6 +389,142 @@ fn copy_dir(src: &Path, dst: &Path) -> anyhow::Result<()> {
             std::fs::copy(&from, &to)?;
         }
     }
+    Ok(())
+}
+
+/// The registry base URL: $CLAW_REGISTRY, else the local default.
+fn registry_url() -> String {
+    std::env::var("CLAW_REGISTRY").unwrap_or_else(|_| "http://127.0.0.1:8888".into())
+}
+
+/// Read a `key = "value"` from claw.toml's [project] section.
+fn toml_value(toml: &str, key: &str) -> Option<String> {
+    toml.lines()
+        .find_map(|l| l.trim().strip_prefix(key))
+        .and_then(|v| v.trim().strip_prefix('='))
+        .map(|v| v.trim().trim_matches('"').to_string())
+}
+
+/// `claw publish [dir]` — bundle this package and upload it to the registry.
+fn publish_cmd(args: &[String]) -> anyhow::Result<()> {
+    let root = args
+        .first()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| project_root().unwrap_or_else(|| PathBuf::from(".")));
+    let toml = std::fs::read_to_string(root.join("claw.toml"))
+        .map_err(|_| anyhow::anyhow!("no claw.toml in {}", root.display()))?;
+    let name = toml_value(&toml, "name").ok_or_else(|| anyhow::anyhow!("claw.toml has no name"))?;
+    let version = toml_value(&toml, "version").unwrap_or_else(|| "0.1.0".into());
+    let entry = toml_value(&toml, "entry").unwrap_or_else(|| "main.claw".into());
+
+    // Bundle: clawc bundle <entry> --output-dir <tmp>. The compiler names
+    // the output <base58-blake3>.tar.zst (content-addressed).
+    let outdir = std::env::temp_dir().join(format!("claw-pub-{}", std::process::id()));
+    std::fs::create_dir_all(&outdir)?;
+    let status = std::process::Command::new(find_clawc()?)
+        .arg("bundle")
+        .arg(root.join(&entry))
+        .arg("--output-dir")
+        .arg(&outdir)
+        .status()?;
+    anyhow::ensure!(status.success(), "clawc bundle failed");
+    let bundle = std::fs::read_dir(&outdir)?
+        .flatten()
+        .map(|e| e.path())
+        .find(|p| p.extension().and_then(|x| x.to_str()) == Some("zst"))
+        .ok_or_else(|| anyhow::anyhow!("no .tar.zst produced"))?;
+
+    let reg = registry_url();
+    eprintln!("publishing {name}@{version} → {reg}");
+    let out = std::process::Command::new("curl")
+        .args(["-s", "-X", "POST", &format!("{reg}/publish")])
+        .args(["-F", &format!("name={name}")])
+        .args(["-F", &format!("version={version}")])
+        .arg("-F")
+        .arg(format!("bundle=@{}", bundle.display()))
+        .output()?;
+    let _ = std::fs::remove_dir_all(&outdir);
+    anyhow::ensure!(out.status.success(), "upload failed");
+    let resp: serde_json::Value = serde_json::from_slice(&out.stdout)
+        .map_err(|_| anyhow::anyhow!("registry: {}", String::from_utf8_lossy(&out.stdout)))?;
+    println!("published {name}@{version}");
+    println!("  {}", resp["url"].as_str().unwrap_or("?"));
+    Ok(())
+}
+
+/// `claw add <name>[@version]` — add a registry dependency to this project:
+/// records it in claw.toml and inserts it into the app header so imports
+/// resolve. The compiler fetches it on the next build/run.
+fn add_cmd(args: &[String]) -> anyhow::Result<()> {
+    let spec = need(args, 0, "package name")?;
+    let (name, want_version) = match spec.split_once('@') {
+        Some((n, v)) => (n.to_string(), Some(v.to_string())),
+        None => (spec.clone(), None),
+    };
+    let root = project_root().unwrap_or_else(|| PathBuf::from("."));
+    let reg = registry_url();
+
+    // Look the package up in the registry.
+    let out = std::process::Command::new("curl")
+        .args(["-s", &format!("{reg}/packages/{name}")])
+        .output()?;
+    let meta: serde_json::Value = serde_json::from_slice(&out.stdout)
+        .map_err(|_| anyhow::anyhow!("`{name}` not found in registry {reg}"))?;
+    // pick the requested version, else latest
+    let (version, url) = if let Some(v) = &want_version {
+        let entry = meta["versions"]
+            .as_array()
+            .and_then(|vs| vs.iter().find(|e| e["version"].as_str() == Some(v)))
+            .ok_or_else(|| anyhow::anyhow!("{name}@{v} not in registry"))?;
+        (v.clone(), entry["url"].as_str().unwrap_or("").to_string())
+    } else {
+        let l = &meta["latest"];
+        (
+            l["version"].as_str().unwrap_or("").to_string(),
+            l["url"].as_str().unwrap_or("").to_string(),
+        )
+    };
+    anyhow::ensure!(!url.is_empty(), "registry returned no url for {name}");
+
+    // Record in claw.toml [dependencies].
+    let toml_path = root.join("claw.toml");
+    let mut toml = std::fs::read_to_string(&toml_path).unwrap_or_default();
+    if !toml.contains("[dependencies]") {
+        toml.push_str("\n[dependencies]\n");
+    }
+    let dep_line = format!("{name} = {{ version = \"{version}\", url = \"{url}\" }}\n");
+    if let Some(pos) = toml.find("[dependencies]") {
+        let insert_at = toml[pos..].find('\n').map(|i| pos + i + 1).unwrap_or(toml.len());
+        // drop any existing line for this package, then insert
+        let mut kept: Vec<&str> = toml.lines().collect();
+        kept.retain(|l| !l.trim_start().starts_with(&format!("{name} =")));
+        toml = kept.join("\n");
+        if !toml.ends_with('\n') {
+            toml.push('\n');
+        }
+        let _ = insert_at;
+    }
+    if !toml.contains(&format!("{name} = {{")) {
+        toml.push_str(&dep_line);
+    }
+    std::fs::write(&toml_path, &toml)?;
+
+    // Insert the package into the app header so `import {name}.X` resolves.
+    let entry = toml_value(&toml, "entry").unwrap_or_else(|| "main.claw".into());
+    let entry_path = root.join(&entry);
+    if let Ok(src) = std::fs::read_to_string(&entry_path) {
+        if src.contains("app [") && !src.contains(&format!("{name}:")) {
+            // insert after the first `{` of the header record
+            if let Some(brace) = src.find('{') {
+                let (head, tail) = src.split_at(brace + 1);
+                let patched = format!("{head}\n    {name}: \"{url}\",{tail}");
+                std::fs::write(&entry_path, patched)?;
+            }
+        }
+    }
+
+    println!("added {name}@{version}");
+    println!("  import {name}.<Module> to use it — `claw run` fetches it");
     Ok(())
 }
 

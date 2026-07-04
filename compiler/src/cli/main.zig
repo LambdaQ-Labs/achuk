@@ -12449,22 +12449,29 @@ fn checkArgsFromDefs(a: cli_args.DefsArgs) cli_args.CheckArgs {
 /// preferring the module whose path matches the input (LSP getModuleEnv
 /// pattern), falling back to the first module that has one.
 fn getRootModuleEnv(build_env: *BuildEnv, path: []const u8) ?*ModuleEnv {
-    var fallback: ?*ModuleEnv = null;
+    // Deterministic: the user's app package is keyed "app"; its designated
+    // root module is the entry the user wrote (defines their top-level defs
+    // + main!). This is NEVER the hosted platform module. The previous
+    // lenient path-match + arbitrary "first module" fallback was
+    // non-deterministic (schedulers iterate unordered) and ~30% of the time
+    // returned the platform's Echo.line! stub instead of the user's defs.
+    if (build_env.schedulers.get("app")) |sched| {
+        if (sched.getRootModule()) |rm| {
+            if (rm.moduleEnv()) |env| return env;
+        }
+    }
+    // Fallback: the module whose file basename matches the input (still
+    // deterministic — exact match, no "first module" guess).
+    const want = std.fs.path.basename(path);
     var sched_it = build_env.schedulers.iterator();
     while (sched_it.next()) |entry| {
-        const sched = entry.value_ptr.*;
-        for (sched.modules.items) |*module_state| {
-            if (module_state.moduleEnv()) |env| {
-                if (std.mem.endsWith(u8, module_state.path, path) or
-                    std.mem.endsWith(u8, path, module_state.path))
-                {
-                    return env;
-                }
-                if (fallback == null) fallback = env;
+        for (entry.value_ptr.*.modules.items) |*module_state| {
+            if (std.mem.eql(u8, std.fs.path.basename(module_state.path), want)) {
+                if (module_state.moduleEnv()) |env| return env;
             }
         }
     }
-    return fallback;
+    return null;
 }
 
 // --- body lowering: CIR expression -> claw-core Expr JSON --------------

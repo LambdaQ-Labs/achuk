@@ -31,7 +31,7 @@ echo ">> building Rust binaries (release)"
 cargo build --release --bin claw --bin claw-mcp --bin claw-lsp
 
 echo ">> building the compiler (clawc + snapshot)"
-( cd compiler && zig build roc && zig build build-snapshot-tool )
+( cd compiler && zig build roc -Doptimize=ReleaseFast && zig build build-snapshot-tool -Doptimize=ReleaseFast )
 
 # --- assemble --------------------------------------------------------------
 STAGE="$(mktemp -d)"; trap 'rm -rf "$STAGE"' EXIT

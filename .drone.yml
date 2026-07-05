@@ -28,7 +28,7 @@ steps:
       - export PATH=/opt/zig-x86_64-linux-0.16.0:$PATH
       - rustup target add x86_64-unknown-linux-musl
       # compiler (clawc + snapshot), Linux x64
-      - cd compiler && zig build roc -Dtarget=x86_64-linux-musl && zig build build-snapshot-tool -Dtarget=x86_64-linux-musl && cd ..
+      - cd compiler && zig build roc -Dtarget=x86_64-linux-musl -Doptimize=ReleaseFast && zig build build-snapshot-tool -Dtarget=x86_64-linux-musl -Doptimize=ReleaseFast && cd ..
       # CLI binaries
       - cargo build --release --target x86_64-unknown-linux-musl --bin claw --bin claw-mcp --bin claw-lsp
       # package
@@ -71,7 +71,7 @@ steps:
       - export PATH=/opt/zig-x86_64-linux-0.16.0:$PATH
       - rustup target add x86_64-pc-windows-gnu
       # compiler, Windows x64
-      - cd compiler && zig build roc -Dtarget=x86_64-windows-gnu && zig build build-snapshot-tool -Dtarget=x86_64-windows-gnu && cd ..
+      - cd compiler && zig build roc -Dtarget=x86_64-windows-gnu -Doptimize=ReleaseFast && zig build build-snapshot-tool -Dtarget=x86_64-windows-gnu -Doptimize=ReleaseFast && cd ..
       # CLI binaries (mingw linker)
       - export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc
       - cargo build --release --target x86_64-pc-windows-gnu --bin claw --bin claw-mcp --bin claw-lsp

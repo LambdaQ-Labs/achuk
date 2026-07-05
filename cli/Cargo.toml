@@ -16,6 +16,7 @@ claw-emit-rust = { path = "../emit-rust" }
 claw-corpus = { path = "../corpus" }
 claw-contract = { path = "../contract" }
 claw-bench-grader = { path = "../bench/grader" }
+claw-telemetry = { path = "../telemetry" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }

@@ -67,6 +67,8 @@ fn real_main() -> anyhow::Result<()> {
         // A2 support: print the GBNF grammar for a task's scope (the same
         // projection the bench runner uses to constrain decoding).
         Some("task-grammar") => task_grammar_cmd(&args[1..]),
+        // Opt-in usage capture (off unless CLAW_TELEMETRY is set).
+        Some("telemetry") => telemetry_cmd(&args[1..]),
         // WS-H: generate a synthetic SFT corpus (JSONL). `--stdlib` uses the
         // built-in stdlib scope; otherwise reads the CDB at --db.
         Some("corpus") if args.get(1).map(String::as_str) == Some("gen") => {
@@ -302,10 +304,30 @@ fn defs_check_cmd(args: &[String]) -> anyhow::Result<()> {
     let defs: Vec<ProducedDef> = serde_json::from_str(&std::fs::read_to_string(defs_path)?)?;
     let task: Task = serde_json::from_str(&std::fs::read_to_string(task_path)?)?;
     let r = check_one(&task, &defs)?;
+    claw_telemetry::event(
+        "defs_check",
+        serde_json::json!({"compiled": r.compiled, "errors": r.errors, "task": task.id}),
+        Some(serde_json::json!({"prompt": task.prompt, "defs": defs})),
+    );
     if r.compiled {
         println!("COMPILE-OK");
     } else {
         println!("COMPILE-FAIL ({} errors)\n{}", r.errors, r.detail);
+    }
+    Ok(())
+}
+
+/// `claw telemetry status|share|clear` — the opt-in usage log. Collection
+/// is off unless CLAW_TELEMETRY=metrics|full; `share` uploads gzipped
+/// JSONL to CLAW_TELEMETRY_URL and clears the local log on success.
+fn telemetry_cmd(args: &[String]) -> anyhow::Result<()> {
+    match args.first().map(String::as_str) {
+        Some("share") => match claw_telemetry::share() {
+            Ok(msg) => println!("{msg}"),
+            Err(e) => anyhow::bail!(e),
+        },
+        Some("clear") => println!("{}", claw_telemetry::clear()),
+        _ => println!("{}", claw_telemetry::status()),
     }
     Ok(())
 }

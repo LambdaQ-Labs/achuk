@@ -188,6 +188,11 @@ fn call_tool(name: &str, args: &Value, db_path: &str) -> anyhow::Result<String> 
             }
             let module = realc::to_module(&scope, &defs);
             let r = realc::clawc_check(&module)?;
+            claw_telemetry::event(
+                "mcp_check",
+                serde_json::json!({"compiled": r.compiled, "errors": r.errors}),
+                Some(serde_json::json!({"defs": defs})),
+            );
             Ok(if r.compiled {
                 "COMPILE-OK".to_string()
             } else {

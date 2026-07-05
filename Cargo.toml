@@ -12,6 +12,7 @@ members = [
     "cli",
     "mcp",
     "lsp",
+    "telemetry",
     "bench/grader",
     "bench/runner",
 ]

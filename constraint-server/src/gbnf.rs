@@ -44,6 +44,13 @@ pub fn def_json_grammar(mask: &[Continuation]) -> String {
     g.push_str(
         "namefield ::= \"\\\"name\\\"\" ws \":\" ws \"\\\"\" [a-z_] [a-zA-Z0-9_]* \"\\\"\" ws \",\" ws\n",
     );
+    // Sibling pool: a def may call a helper defined in the SAME output —
+    // legal names are a fixed pool (like the p-pool), so the grammar can
+    // admit sibling calls without admitting arbitrary invented names. The
+    // grader still verifies a referenced sibling is actually defined.
+    g.push_str(
+        "siblingname ::= \"\\\"step\\\"\" | \"\\\"helper\\\"\" | \"\\\"aux\\\"\" | \"\\\"go\\\"\" | \"\\\"part\\\"\"\n",
+    );
     let mut effs: Vec<String> = mask
         .iter()
         .flat_map(|c| c.effects.iter().cloned())
@@ -69,7 +76,9 @@ pub fn def_json_grammar(mask: &[Continuation]) -> String {
     const MAX_DEPTH: usize = 6;
     g.push_str("expr ::= expr0\n");
     for k in 0..MAX_DEPTH {
-        g.push_str(&format!("expr{k} ::= evar | elit | elam{k} | eapp{k}\n"));
+        g.push_str(&format!(
+            "expr{k} ::= evar | elit | elam{k} | eapp{k} | eif{k} | elet{k} | ematch{k} | etag{k}\n"
+        ));
         g.push_str(&format!(
             "elam{k} ::= \"{{\" ws \"\\\"Lam\\\"\" ws \":\" ws \"{{\" ws \"\\\"params\\\"\" ws \":\" ws \"[\" ws (paramname (ws \",\" ws paramname)*)? ws \"]\" ws \",\" ws \"\\\"body\\\"\" ws \":\" ws expr{next} ws \"}}\" ws \"}}\"\n",
             next = k + 1
@@ -78,21 +87,54 @@ pub fn def_json_grammar(mask: &[Continuation]) -> String {
             "eapp{k} ::= \"{{\" ws \"\\\"App\\\"\" ws \":\" ws \"{{\" ws \"\\\"func\\\"\" ws \":\" ws expr{next} ws \",\" ws \"\\\"args\\\"\" ws \":\" ws \"[\" ws (expr{next} (ws \",\" ws expr{next})*)? ws \"]\" ws \"}}\" ws \"}}\"\n",
             next = k + 1
         ));
+        // Lazy conditional, let-binding, pattern match, tag construction —
+        // the rest of the expression surface (records stay out until the
+        // core Type carries them).
+        g.push_str(&format!(
+            "eif{k} ::= \"{{\" ws \"\\\"If\\\"\" ws \":\" ws \"{{\" ws \"\\\"cond\\\"\" ws \":\" ws expr{next} ws \",\" ws \"\\\"then\\\"\" ws \":\" ws expr{next} ws \",\" ws \"\\\"els\\\"\" ws \":\" ws expr{next} ws \"}}\" ws \"}}\"\n",
+            next = k + 1
+        ));
+        g.push_str(&format!(
+            "elet{k} ::= \"{{\" ws \"\\\"Let\\\"\" ws \":\" ws \"{{\" ws \"\\\"name\\\"\" ws \":\" ws paramname ws \",\" ws \"\\\"value\\\"\" ws \":\" ws expr{next} ws \",\" ws \"\\\"body\\\"\" ws \":\" ws expr{next} ws \"}}\" ws \"}}\"\n",
+            next = k + 1
+        ));
+        g.push_str(&format!(
+            "ematch{k} ::= \"{{\" ws \"\\\"Match\\\"\" ws \":\" ws \"[\" ws expr{next} ws \",\" ws \"[\" ws arm{next} (ws \",\" ws arm{next})* ws \"]\" ws \"]\" ws \"}}\"\n",
+            next = k + 1
+        ));
+        g.push_str(&format!(
+            "arm{next} ::= \"[\" ws pat ws \",\" ws expr{next} ws \"]\"\n",
+            next = k + 1
+        ));
+        g.push_str(&format!(
+            "etag{k} ::= \"{{\" ws \"\\\"Tag\\\"\" ws \":\" ws \"[\" ws tagname ws \",\" ws \"[\" ws (expr{next} (ws \",\" ws expr{next})*)? ws \"]\" ws \"]\" ws \"}}\"\n",
+            next = k + 1
+        ));
     }
+    // Patterns: Wild, a p-pool binder, a literal, or a known tag over
+    // sub-patterns (one nesting level — machine patterns stay flat).
+    g.push_str("pat ::= \"\\\"Wild\\\"\" | pvar | plit | ptag\n");
+    g.push_str("pvar ::= \"{\" ws \"\\\"Var\\\"\" ws \":\" ws paramname ws \"}\"\n");
+    g.push_str("plit ::= \"{\" ws \"\\\"Lit\\\"\" ws \":\" ws (\"{\" ws \"\\\"Int\\\"\" ws \":\" ws int ws \"}\" | \"{\" ws \"\\\"Str\\\"\" ws \":\" ws string ws \"}\") ws \"}\"\n");
+    g.push_str("ptag ::= \"{\" ws \"\\\"Tag\\\"\" ws \":\" ws \"[\" ws tagname ws \",\" ws \"[\" ws (patleaf (ws \",\" ws patleaf)*)? ws \"]\" ws \"]\" ws \"}\"\n");
+    g.push_str("patleaf ::= \"\\\"Wild\\\"\" | pvar | plit\n");
+    // Tags are constructors, not library APIs; the pool covers the stdlib\'s
+    // sum types. Task-specific unions widen this via the mask later.
+    g.push_str("tagname ::= \"\\\"Some\\\"\" | \"\\\"None\\\"\" | \"\\\"Ok\\\"\" | \"\\\"Err\\\"\"\n");
     // Leaf level: no further nesting.
     g.push_str(&format!("expr{MAX_DEPTH} ::= evar | elit\n"));
     g.push_str("evar ::= \"{\" ws \"\\\"Var\\\"\" ws \":\" ws varname ws \"}\"\n");
 
     // The load-bearing rule: symbol names are an explicit alternation.
     if mask.is_empty() {
-        g.push_str("varname ::= paramname\n");
+        g.push_str("varname ::= paramname | siblingname\n");
     } else {
         let alts: Vec<String> = mask
             .iter()
             .map(|c| format!("\"\\\"{}\\\"\"", escape(&c.name)))
             .collect();
         g.push_str(&format!("scopename ::= {}\n", alts.join(" | ")));
-        g.push_str("varname ::= scopename | paramname\n");
+        g.push_str("varname ::= scopename | paramname | siblingname\n");
     }
 
     // Lambda parameters are drawn from a FIXED pool (p0..p7), NOT arbitrary
@@ -144,14 +186,14 @@ mod tests {
     fn scope_names_become_explicit_alternation() {
         let g = def_json_grammar(&[cont("Nat.add"), cont("Nat.checkedSub")]);
         assert!(g.contains(r#"scopename ::= "\"Nat.add\"" | "\"Nat.checkedSub\"""#));
-        assert!(g.contains("varname ::= scopename | paramname"));
+        assert!(g.contains("varname ::= scopename | paramname | siblingname"));
     }
 
     #[test]
     fn empty_mask_allows_only_params() {
         let g = def_json_grammar(&[]);
         assert!(!g.contains("scopename"));
-        assert!(g.contains("varname ::= paramname\n"));
+        assert!(g.contains("varname ::= paramname | siblingname\n"));
     }
 
     #[test]

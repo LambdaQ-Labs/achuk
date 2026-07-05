@@ -25,7 +25,8 @@ Definition schema: {"name": str, "expr": <Expr>, "ty": <Type>, "effects": [<str>
 Expr: {"Var": name} | {"Lit": {"Int": n}} | {"Lit": {"Str": s}} | {"Lam": {"params": ["p0"], "body": <Expr>}} | {"App": {"func": <Expr>, "args": [<Expr>]}}
 Type: {"Named": "Nat"} | {"Var": "a"} | {"App": ["Result", [<Type>]]} | {"Fn": [[<Type>], <Type>]}
 Lambda parameters MUST be named p0, p1, ... Reference a parameter or an in-scope symbol with {"Var": "<name>"}. Do NOT invent any other name.
-"effects" lists the effect row: the union of the effect rows of every effectful in-scope symbol the code uses (e.g. ["Fs"] when calling File.read!); [] for pure code."""
+"effects" lists the effect row: the union of the effect rows of every effectful in-scope symbol the code uses (e.g. ["Fs"] when calling File.read!); [] for pure code.
+When defining MULTIPLE definitions, name helpers from the pool: step, helper, aux, go, part — a sibling may then be referenced with {"Var": "<helper name>"}."""
 
 
 def build_text(tok, prompt, completion):

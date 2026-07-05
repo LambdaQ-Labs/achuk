@@ -52,15 +52,59 @@ def vars_of(x):
     return o
 
 
-def expr_vars(defs):
-    """Var names from each def's EXPR only — Type::Var serializes as
-    {"Var": "a"} too, so walking "ty" misreads generics as references."""
+def _pat_vars(p):
+    if isinstance(p, dict):
+        if isinstance(p.get("Var"), str):
+            return {p["Var"]}
+        if "Tag" in p and isinstance(p["Tag"], list) and len(p["Tag"]) == 2:
+            out = set()
+            for sp in p["Tag"][1]:
+                out |= _pat_vars(sp)
+            return out
+    return set()
+
+
+def _free(e, bound):
+    """Free Var names in an Expr JSON, respecting Lam/Let/Match binders."""
+    if isinstance(e, list):
+        out = []
+        for x in e:
+            out += _free(x, bound)
+        return out
+    if not isinstance(e, dict):
+        return []
+    if isinstance(e.get("Var"), str):
+        return [] if e["Var"] in bound else [e["Var"]]
+    if isinstance(e.get("Lam"), dict):
+        l = e["Lam"]
+        return _free(l.get("body"), bound | set(l.get("params") or []))
+    if isinstance(e.get("Let"), dict):
+        l = e["Let"]
+        return _free(l.get("value"), bound) + _free(l.get("body"), bound | {l.get("name")})
+    if isinstance(e.get("Match"), list) and len(e["Match"]) == 2:
+        scrut, arms = e["Match"]
+        out = _free(scrut, bound)
+        for arm in arms:
+            if isinstance(arm, list) and len(arm) == 2:
+                out += _free(arm[1], bound | _pat_vars(arm[0]))
+        return out
     out = []
-    for d in (defs if isinstance(defs, list) else [defs]):
-        if isinstance(d, dict):
-            out += vars_of(d.get("expr"))
+    for v in e.values():
+        out += _free(v, bound)
     return out
 
+
+def expr_vars(defs):
+    """Free names across the defs\' EXPRS (binders excluded; a def\'s own
+    name and its siblings\' names are in scope — recursion is legal).
+    Type::Var also serializes as {"Var": ...}, so "ty" is never walked."""
+    defs = defs if isinstance(defs, list) else [defs]
+    defined = {d.get("name") for d in defs if isinstance(d, dict) and d.get("name")}
+    out = []
+    for d in defs:
+        if isinstance(d, dict):
+            out += [v for v in _free(d.get("expr"), set(defined))]
+    return out
 
 def check(raw, scope):
     """(valid_json, halluc_free, effects_sound) for one completion."""

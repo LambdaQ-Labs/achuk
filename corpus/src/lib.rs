@@ -439,6 +439,286 @@ fn multidef_examples(cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
     Ok(out)
 }
 
+/// Native-`If` programs: `\p0 -> if q(p0) then A else B`, with constant
+/// and parameter branches. conditional_examples teaches the `Bool.if` CALL
+/// shape; this teaches the lazy `If` SYNTAX — a general model needs both.
+fn if_examples(cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
+    use claw_core::Lit;
+    let nat = || Type::Named("Nat".into());
+    let mut out = Vec::new();
+    for q in &nat_preds(cdb)? {
+        let cases: Vec<(Expr, Expr, &str)> = vec![
+            (
+                Expr::Lit(Lit::Int(1)),
+                Expr::Lit(Lit::Int(0)),
+                "returns 1 when it holds, else 0",
+            ),
+            (
+                Expr::Var("p0".into()),
+                Expr::Lit(Lit::Int(0)),
+                "returns p0 when it holds, else 0",
+            ),
+        ];
+        for (i, (then, els, desc)) in cases.into_iter().enumerate() {
+            let def = Def::new(
+                Expr::Lam {
+                    params: vec!["p0".into()],
+                    body: Box::new(Expr::If {
+                        cond: Box::new(Expr::App {
+                            func: Box::new(Expr::Var(q.clone())),
+                            args: vec![Expr::Var("p0".into())],
+                        }),
+                        then: Box::new(then),
+                        els: Box::new(els),
+                    }),
+                },
+                Type::Fn(vec![nat()], Box::new(nat())),
+            );
+            let dname = format!("{}_if{i}", q.replace('.', "_").to_lowercase());
+            out.push(named_example(
+                &dname,
+                def,
+                format!("Define `{dname}` : Nat -> Nat (parameter p0) using a native `if` on `{q}` of p0: it {desc}."),
+                vec![q.clone()],
+            ));
+        }
+    }
+    Ok(out)
+}
+
+/// Let-binding programs: `\p0 -> let p8 = f(p0) in g(p8)`. Binder names
+/// come from the same p-pool as parameters — one pool, one protocol rule.
+fn let_examples(cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
+    let unary = nat_unary(cdb)?;
+    let nat = || Type::Named("Nat".into());
+    let mut out = Vec::new();
+    for g in &unary {
+        for f in &unary {
+            let def = Def::new(
+                Expr::Lam {
+                    params: vec!["p0".into()],
+                    body: Box::new(Expr::Let {
+                        name: "p8".into(),
+                        value: Box::new(Expr::App {
+                            func: Box::new(Expr::Var(g.clone())),
+                            args: vec![Expr::Var("p0".into())],
+                        }),
+                        body: Box::new(Expr::App {
+                            func: Box::new(Expr::Var(f.clone())),
+                            args: vec![Expr::Var("p8".into())],
+                        }),
+                    }),
+                },
+                Type::Fn(vec![nat()], Box::new(nat())),
+            );
+            let dname = format!(
+                "{}_let_{}",
+                g.replace('.', "_").to_lowercase(),
+                f.replace('.', "_").to_lowercase()
+            );
+            out.push(named_example(
+                &dname,
+                def,
+                format!("Define `{dname}` : Nat -> Nat (parameter p0): bind p8 = `{g}` of p0 with a let, then return `{f}` of p8."),
+                vec![g.clone(), f.clone()],
+            ));
+        }
+    }
+    Ok(out)
+}
+
+/// Pattern-matching over Maybe/Result plus tag construction — how a real
+/// program handles absence and failure. Pattern binders use the p-pool.
+fn match_examples(_cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
+    use claw_core::{Lit, Pat};
+    let nat = || Type::Named("Nat".into());
+    let maybe_nat = || Type::App("Maybe".into(), vec![nat()]);
+    let result_nat = || Type::App("Result".into(), vec![nat(), Type::Var("e".into())]);
+    let mut out = Vec::new();
+
+    for (k, kdesc) in [(0i64, "zero"), (1, "one"), (100, "100")] {
+        let def = Def::new(
+            Expr::Lam {
+                params: vec!["p0".into()],
+                body: Box::new(Expr::Match(
+                    Box::new(Expr::Var("p0".into())),
+                    vec![
+                        (
+                            Pat::Tag("Some".into(), vec![Pat::Var("p1".into())]),
+                            Expr::Var("p1".into()),
+                        ),
+                        (Pat::Tag("None".into(), vec![]), Expr::Lit(Lit::Int(k))),
+                    ],
+                )),
+            },
+            Type::Fn(vec![maybe_nat()], Box::new(nat())),
+        );
+        let dname = format!("maybe_or_{k}");
+        out.push(named_example(
+            &dname,
+            def,
+            format!("Define `{dname}` : Maybe Nat -> Nat (parameter p0): match on p0 — a Some yields its payload (bind it p1), a None yields {kdesc}."),
+            vec![],
+        ));
+
+        let def = Def::new(
+            Expr::Lam {
+                params: vec!["p0".into()],
+                body: Box::new(Expr::Match(
+                    Box::new(Expr::Var("p0".into())),
+                    vec![
+                        (
+                            Pat::Tag("Ok".into(), vec![Pat::Var("p1".into())]),
+                            Expr::Var("p1".into()),
+                        ),
+                        (Pat::Tag("Err".into(), vec![Pat::Wild]), Expr::Lit(Lit::Int(k))),
+                    ],
+                )),
+            },
+            Type::Fn(vec![result_nat()], Box::new(nat())),
+        );
+        let dname = format!("ok_or_{k}");
+        out.push(named_example(
+            &dname,
+            def,
+            format!("Define `{dname}` : Result Nat e -> Nat (parameter p0): match on p0 — Ok yields its payload (bind it p1), any Err yields {kdesc}."),
+            vec![],
+        ));
+    }
+
+    let def = Def::new(
+        Expr::Lam {
+            params: vec!["p0".into()],
+            body: Box::new(Expr::Tag("Some".into(), vec![Expr::Var("p0".into())])),
+        },
+        Type::Fn(vec![nat()], Box::new(maybe_nat())),
+    );
+    out.push(named_example(
+        "wrap_some",
+        def,
+        "Define `wrap_some` : Nat -> Maybe Nat (parameter p0) that wraps p0 in the Some tag.".into(),
+        vec![],
+    ));
+    let def = Def::new(
+        Expr::Lam {
+            params: vec!["p0".into()],
+            body: Box::new(Expr::Tag("Ok".into(), vec![Expr::Var("p0".into())])),
+        },
+        Type::Fn(vec![nat()], Box::new(result_nat())),
+    );
+    out.push(named_example(
+        "wrap_ok",
+        def,
+        "Define `wrap_ok` : Nat -> Result Nat e (parameter p0) that wraps p0 in the Ok tag.".into(),
+        vec![],
+    ));
+    Ok(out)
+}
+
+/// Recursive definitions: a named def calling ITSELF — legal under the
+/// named-defs protocol. Guarded by a base case; the interp is step-bounded.
+fn recursion_examples(cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
+    use claw_core::Lit;
+    if cdb.resolve("Nat.isZero").is_err() || cdb.resolve("Nat.dec").is_err() {
+        return Ok(Vec::new());
+    }
+    let nat = || Type::Named("Nat".into());
+    let mut out = Vec::new();
+    let combos: Vec<(&str, &str, &str)> = vec![
+        ("sum_to", "Nat.add", "the sum 0 + 1 + ... + p0"),
+        ("count_down", "Nat.max", "the maximum along the countdown"),
+    ];
+    for (dname, op, desc) in combos {
+        let body = Expr::If {
+            cond: Box::new(Expr::App {
+                func: Box::new(Expr::Var("Nat.isZero".into())),
+                args: vec![Expr::Var("p0".into())],
+            }),
+            then: Box::new(Expr::Lit(Lit::Int(0))),
+            els: Box::new(Expr::App {
+                func: Box::new(Expr::Var(op.into())),
+                args: vec![
+                    Expr::Var("p0".into()),
+                    Expr::App {
+                        func: Box::new(Expr::Var(dname.into())),
+                        args: vec![Expr::App {
+                            func: Box::new(Expr::Var("Nat.dec".into())),
+                            args: vec![Expr::Var("p0".into())],
+                        }],
+                    },
+                ],
+            }),
+        };
+        let def = Def::new(
+            Expr::Lam {
+                params: vec!["p0".into()],
+                body: Box::new(body),
+            },
+            Type::Fn(vec![nat()], Box::new(nat())),
+        );
+        out.push(named_example(
+            dname,
+            def,
+            format!("Define `{dname}` : Nat -> Nat (parameter p0) RECURSIVELY: when `Nat.isZero` of p0, return 0; otherwise combine p0 (via `{op}`) with `{dname}` of `Nat.dec` of p0 — computing {desc}."),
+            vec!["Nat.isZero".into(), "Nat.dec".into(), op.into()],
+        ));
+    }
+    Ok(out)
+}
+
+// --- small shared helpers for the shape classes ----------------------------
+
+fn nat_preds(cdb: &Cdb) -> claw_cdb::Result<Vec<String>> {
+    Ok(cdb
+        .symbols()?
+        .into_iter()
+        .filter_map(|(n, h)| {
+            let d = cdb.get(&h).ok()?;
+            if let Type::Fn(ps, ret) = &d.ty {
+                if ps.len() == 1
+                    && matches!(&ps[0], Type::Named(x) if x == "Nat")
+                    && matches!(&**ret, Type::Named(x) if x == "Bool")
+                {
+                    return Some(n);
+                }
+            }
+            None
+        })
+        .collect())
+}
+
+fn nat_unary(cdb: &Cdb) -> claw_cdb::Result<Vec<String>> {
+    Ok(cdb
+        .symbols()?
+        .into_iter()
+        .filter_map(|(n, h)| {
+            let d = cdb.get(&h).ok()?;
+            if let Type::Fn(ps, ret) = &d.ty {
+                if ps.len() == 1
+                    && matches!(&ps[0], Type::Named(x) if x == "Nat")
+                    && matches!(&**ret, Type::Named(x) if x == "Nat")
+                {
+                    return Some(n);
+                }
+            }
+            None
+        })
+        .collect())
+}
+
+/// Package a named def as an Example in the output protocol.
+fn named_example(name: &str, def: Def, prompt: String, uses: Vec<String>) -> Example {
+    let value = serde_json::json!([{
+        "name": name, "expr": def.expr, "ty": def.ty,
+        "effects": def.effects, "deprecated": false, "doc": ""
+    }]);
+    Example {
+        prompt,
+        completion: serde_json::to_string(&value).unwrap_or_default(),
+        uses,
+    }
+}
+
 /// Instruction prefixes for prompt augmentation. Same target completion,
 /// varied phrasing — teaches the model the output protocol robustly rather
 /// than memorizing one instruction style. Standard SFT augmentation.
@@ -483,6 +763,10 @@ pub fn generate_stdlib() -> claw_cdb::Result<Vec<Example>> {
     base.extend(literal_examples(&cdb)?);
     base.extend(conditional_examples(&cdb)?);
     base.extend(multidef_examples(&cdb)?);
+    base.extend(if_examples(&cdb)?);
+    base.extend(let_examples(&cdb)?);
+    base.extend(match_examples(&cdb)?);
+    base.extend(recursion_examples(&cdb)?);
     Ok(augment(&base))
 }
 

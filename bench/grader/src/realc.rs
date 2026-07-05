@@ -138,9 +138,9 @@ pub fn task_module(scope: &[ScopeEntry], produced: &[ProducedDef]) -> anyhow::Re
     Ok(to_module(&pairs, produced))
 }
 
-/// Locate achukc: `$ACHUK_CLAWC`, else `achukc` on PATH.
+/// Locate achukc: `$ACHUK_COMPILER`, else `achukc` on PATH.
 fn find_achukc() -> PathBuf {
-    std::env::var("ACHUK_CLAWC")
+    std::env::var("ACHUK_COMPILER")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("achukc"))
 }
@@ -168,7 +168,7 @@ pub fn clawc_check(module_src: &str) -> anyhow::Result<RealCheck> {
         .arg("check")
         .arg(&tmp)
         .output()
-        .map_err(|e| anyhow::anyhow!("running achukc: {e} (set ACHUK_CLAWC)"))?;
+        .map_err(|e| anyhow::anyhow!("running achukc: {e} (set ACHUK_COMPILER)"))?;
     let _ = std::fs::remove_file(&tmp);
 
     let text = format!(

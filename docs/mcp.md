@@ -34,7 +34,7 @@ achuk-mcp --db /path/to/project/achuk.cdb
 ```
 
 `achuk_check` runs the vendored compiler: put `achukc` on PATH or set
-`ACHUK_CLAWC=/path/to/achukc` in the server's env.
+`ACHUK_COMPILER=/path/to/achukc` in the server's env.
 
 Below, replace `/abs/path/to/` with your actual paths. Every client speaks
 the same stdio protocol — only the config file differs.
@@ -62,7 +62,7 @@ Or per-project `.mcp.json`:
     "achuk": {
       "command": "/abs/path/to/achuk-mcp",
       "args": ["--db", "achuk.cdb"],
-      "env": { "ACHUK_CLAWC": "/abs/path/to/achukc" }
+      "env": { "ACHUK_COMPILER": "/abs/path/to/achukc" }
     }
   }
 }
@@ -79,7 +79,7 @@ Or per-project `.mcp.json`:
     "achuk": {
       "command": "/abs/path/to/achuk-mcp",
       "args": ["--db", "/abs/path/to/achuk.cdb"],
-      "env": { "ACHUK_CLAWC": "/abs/path/to/achukc" }
+      "env": { "ACHUK_COMPILER": "/abs/path/to/achukc" }
     }
   }
 }
@@ -95,7 +95,7 @@ Or per-project `.mcp.json`:
     "achuk": {
       "command": "/abs/path/to/achuk-mcp",
       "args": ["--db", "achuk.cdb"],
-      "env": { "ACHUK_CLAWC": "/abs/path/to/achukc" }
+      "env": { "ACHUK_COMPILER": "/abs/path/to/achukc" }
     }
   }
 }
@@ -173,14 +173,14 @@ command = "/abs/path/to/achuk-mcp"
 args = ["--db", "/abs/path/to/achuk.cdb"]
 
 [mcp_servers.achuk.env]
-ACHUK_CLAWC = "/abs/path/to/achukc"
+ACHUK_COMPILER = "/abs/path/to/achukc"
 ```
 
 ## Cline / Continue / anything else
 
 Any MCP client that can spawn a stdio server works with the same three
 fields: command `achuk-mcp`, args `["--db", "<path>"]`, optional env
-`ACHUK_CLAWC`. There is no HTTP transport yet — file an issue if you need
+`ACHUK_COMPILER`. There is no HTTP transport yet — file an issue if you need
 one.
 
 ## Smoke test

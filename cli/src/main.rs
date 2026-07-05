@@ -267,8 +267,8 @@ fn emit_rust_cmd(args: &[String]) -> anyhow::Result<()> {
 /// crash-stubs plus the produced defs, and run `achukc check` on the module.
 fn defs_check_cmd(args: &[String]) -> anyhow::Result<()> {
     use achuk_bench_grader::{realc, ProducedDef, Task};
-    if std::env::var("ACHUK_CLAWC").is_err() {
-        std::env::set_var("ACHUK_CLAWC", find_achukc()?);
+    if std::env::var("ACHUK_COMPILER").is_err() {
+        std::env::set_var("ACHUK_COMPILER", find_achukc()?);
     }
 
     let check_one = |task: &Task, defs: &[ProducedDef]| -> anyhow::Result<realc::RealCheck> {

@@ -273,7 +273,7 @@ fn defs_check_cmd(args: &[String]) -> anyhow::Result<()> {
 
     let check_one = |task: &Task, defs: &[ProducedDef]| -> anyhow::Result<realc::RealCheck> {
         let module = realc::task_module(&task.scope, defs)?;
-        realc::clawc_check(&module)
+        realc::achukc_check(&module)
     };
 
     if args.first().map(String::as_str) == Some("--batch") {

@@ -156,7 +156,7 @@ pub struct RealCheck {
 
 /// Run `achukc check` on a module. The signal is the `Found N error(s)`
 /// summary line, not the exit code.
-pub fn clawc_check(module_src: &str) -> anyhow::Result<RealCheck> {
+pub fn achukc_check(module_src: &str) -> anyhow::Result<RealCheck> {
     static SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let tmp = std::env::temp_dir().join(format!(
         "achuk-realc-{}-{}.achuk",

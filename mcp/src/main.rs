@@ -187,7 +187,7 @@ fn call_tool(name: &str, args: &Value, db_path: &str) -> anyhow::Result<String> 
                 scope.push((n, d.ty));
             }
             let module = realc::to_module(&scope, &defs);
-            let r = realc::clawc_check(&module)?;
+            let r = realc::achukc_check(&module)?;
             achuk_telemetry::event(
                 "mcp_check",
                 serde_json::json!({"compiled": r.compiled, "errors": r.errors}),

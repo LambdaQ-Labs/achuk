@@ -160,7 +160,7 @@ fn gen(cdb: &Cdb, task: &str, unconstrained: bool) -> anyhow::Result<()> {
         scope_pairs.push((n, d.ty));
     }
     let module = achuk_bench_grader::realc::to_module(&scope_pairs, &defs);
-    match achuk_bench_grader::realc::clawc_check(&module) {
+    match achuk_bench_grader::realc::achukc_check(&module) {
         Ok(r) if r.compiled => println!("── verified ── real compiler: OK"),
         Ok(r) => {
             println!("── REJECTED ── real compiler found {} error(s):\n{}", r.errors, r.detail);

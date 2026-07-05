@@ -19,4 +19,4 @@ labels: ["good first issue", "benchmark"]
 
 **Grading:** what must hold? (compiles / tests / contracts / no deprecated symbol / no hallucination)
 
-<!-- Drop the finished JSON in bench/tasks/ and run `cargo test -p claw-bench-runner` to validate. -->
+<!-- Drop the finished JSON in bench/tasks/ and run `cargo test -p achuk-bench-runner` to validate. -->

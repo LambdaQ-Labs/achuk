@@ -1,6 +1,6 @@
 //! Server-rendered web UI: index + search + package pages.
 //!
-//! Same visual language as clawlang.dev. Every package page renders the
+//! Same visual language as achuk.dev. Every package page renders the
 //! definitions the MCP-compat gate required at publish — so the page IS
 //! the documentation, generated from the same payload the AI consumes.
 
@@ -56,13 +56,13 @@ td code{{font-family:var(--mono);font-size:13px}}
 footer{{padding:34px 0;color:var(--dim);font-size:13.5px}}
 </style></head><body>
 <header><div class="wrap">
-<a class="logo" href="/"><svg width="22" height="22" viewBox="0 0 32 32"><path d="M6 26 Q10 12 16 6 Q14 16 12 26 Z M13 26 Q17 13 23 7 Q20 17 18 26 Z M19 26 Q23 15 28 10 Q25 19 24 26 Z" fill="#b45309"/></svg>Claw <span style="color:var(--dim);font-weight:400">Registry</span></a>
-<nav><a href="https://clawlang.dev">clawlang.dev</a><a href="https://clawlang.dev/docs.html">Docs</a><a href="https://github.com/LambdaQ-Labs/claw">GitHub</a></nav>
+<a class="logo" href="/"><svg width="22" height="22" viewBox="0 0 32 32"><path d="M6 26 Q10 12 16 6 Q14 16 12 26 Z M13 26 Q17 13 23 7 Q20 17 18 26 Z M19 26 Q23 15 28 10 Q25 19 24 26 Z" fill="#b45309"/></svg>Achuk <span style="color:var(--dim);font-weight:400">Registry</span></a>
+<nav><a href="https://achuk.dev">achuk.dev</a><a href="https://achuk.dev/docs.html">Docs</a><a href="https://github.com/LambdaQ-Labs/achuk">GitHub</a></nav>
 </div></header>
 <div class="wrap">{body}</div>
 <footer><div class="wrap">Every package here is AI-legible by rule: it publishes its definitions
-(names, types, effects, docs), your tools ingest them on <code style="font-family:var(--mono)">claw add</code>.
-· <a href="https://clawlang.dev/docs.html#packages">How packages work</a></div></footer>
+(names, types, effects, docs), your tools ingest them on <code style="font-family:var(--mono)">achuk add</code>.
+· <a href="https://achuk.dev/docs.html#packages">How packages work</a></div></footer>
 </body></html>"##
     ))
 }
@@ -125,15 +125,15 @@ pub async fn index_html(State(st): State<AppState>, Query(q): Query<SearchQ>) ->
     };
 
     shell(
-        "Claw Registry — packages your AI understands",
+        "Achuk Registry — packages your AI understands",
         &format!(
             r#"<h1>Packages your AI understands</h1>
 <p class="sub">Every package publishes its definitions — install one and your editor,
-your assistant, and <code style="font-family:var(--mono)">claw ai</code> know it instantly.</p>
+your assistant, and <code style="font-family:var(--mono)">achuk ai</code> know it instantly.</p>
 <form action="/" method="get"><input type="search" name="q" value="{}" placeholder="search packages…" aria-label="search packages"></form>
 {results}
 <pre># publish yours
-claw publish        # exports your definitions automatically — that's the whole requirement</pre>"#,
+achuk publish        # exports your definitions automatically — that's the whole requirement</pre>"#,
             esc(&needle)
         ),
     )
@@ -163,7 +163,7 @@ pub async fn package_html(
 
     if rows.is_empty() {
         return shell(
-            "not found — Claw Registry",
+            "not found — Achuk Registry",
             &format!("<h1>{}</h1><p class=\"sub\">No such package.</p>", esc(&name)),
         );
     }
@@ -230,11 +230,11 @@ pub async fn package_html(
         .collect();
 
     shell(
-        &format!("{} — Claw Registry", esc(&name)),
+        &format!("{} — Achuk Registry", esc(&name)),
         &format!(
             r#"<h1>{n}<span class="badge">✓ AI-legible</span></h1>
 <div class="meta">latest {v} · content hash <code>{h}</code></div>
-<pre>claw add {n}</pre>
+<pre>achuk add {n}</pre>
 {defs_html}
 <h2 style="font-size:20px;margin-top:30px">Versions</h2>
 <table><tr><th>version</th><th>size</th><th>published</th></tr>{versions}</table>"#,

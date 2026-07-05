@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-  "name": "Claw",
-  "scopeName": "source.claw",
+  "name": "Achuk",
+  "scopeName": "source.achuk",
   "patterns": [
     { "include": "#comments" },
     { "include": "#module" },
@@ -21,7 +21,7 @@
     "comments": {
       "patterns": [
         {
-          "name": "comment.line.number-sign.claw",
+          "name": "comment.line.number-sign.achuk",
           "match": "#.*$"
         }
       ]
@@ -30,7 +30,7 @@
       "patterns": [
         {
           "match": "^\\s*(module|app|platform|package|hosted|import|expose|exposing)\\b",
-          "name": "keyword.control.module.claw"
+          "name": "keyword.control.module.achuk"
         }
       ]
     },
@@ -38,8 +38,8 @@
       "comment": "name : Type  — a standalone type signature line",
       "match": "^\\s*([a-z_][a-zA-Z0-9_]*!?)\\s*(:)\\s*(.+)$",
       "captures": {
-        "1": { "name": "entity.name.function.claw" },
-        "2": { "name": "keyword.operator.type-annotation.claw" },
+        "1": { "name": "entity.name.function.achuk" },
+        "2": { "name": "keyword.operator.type-annotation.achuk" },
         "3": { "patterns": [{ "include": "#types" }] }
       }
     },
@@ -47,15 +47,15 @@
       "patterns": [
         {
           "match": "\\b([A-Z][a-zA-Z0-9_]*)(\\.[A-Z][a-zA-Z0-9_]*)*\\b",
-          "name": "entity.name.type.claw"
+          "name": "entity.name.type.achuk"
         },
         {
           "match": "\\b[a-z][a-zA-Z0-9_]*\\b",
-          "name": "variable.other.generic-type.claw"
+          "name": "variable.other.generic-type.achuk"
         },
         {
           "match": "->|=>|,",
-          "name": "keyword.operator.arrow.claw"
+          "name": "keyword.operator.arrow.achuk"
         }
       ]
     },
@@ -63,25 +63,25 @@
       "patterns": [
         {
           "match": "\\b(if|else|match|when|is|then|and|or|not|crash|expect|return|dbg)\\b",
-          "name": "keyword.control.claw"
+          "name": "keyword.control.achuk"
         }
       ]
     },
     "strings": {
-      "name": "string.quoted.double.claw",
+      "name": "string.quoted.double.achuk",
       "begin": "\"",
       "end": "\"",
       "patterns": [
         {
-          "name": "constant.character.escape.claw",
+          "name": "constant.character.escape.achuk",
           "match": "\\\\(n|t|r|\\\\|\"|u\\{[0-9a-fA-F]+\\})"
         },
         {
-          "name": "meta.embedded.interpolation.claw",
+          "name": "meta.embedded.interpolation.achuk",
           "begin": "\\$\\{",
           "end": "\\}",
-          "beginCaptures": { "0": { "name": "punctuation.section.interpolation.begin.claw" } },
-          "endCaptures": { "0": { "name": "punctuation.section.interpolation.end.claw" } },
+          "beginCaptures": { "0": { "name": "punctuation.section.interpolation.begin.achuk" } },
+          "endCaptures": { "0": { "name": "punctuation.section.interpolation.end.achuk" } },
           "patterns": [{ "include": "$self" }]
         }
       ]
@@ -90,52 +90,52 @@
       "patterns": [
         {
           "match": "\\b0x[0-9a-fA-F_]+\\b|\\b[0-9][0-9_]*(\\.[0-9_]+)?\\b",
-          "name": "constant.numeric.claw"
+          "name": "constant.numeric.achuk"
         }
       ]
     },
     "effectful": {
       "comment": "effectful calls and defs end with ! — the visible effect marker",
       "match": "\\b([a-z_][a-zA-Z0-9_]*!)",
-      "name": "support.function.effectful.claw"
+      "name": "support.function.effectful.achuk"
     },
     "tags": {
       "comment": "tag constructors: Ok, Err, Some, None, custom unions",
       "match": "\\b[A-Z][a-zA-Z0-9_]*\\b(?!\\s*\\.)",
-      "name": "entity.name.tag.claw constant.other.claw"
+      "name": "entity.name.tag.achuk constant.other.achuk"
     },
     "qualified": {
       "comment": "Module.function references — the CDB namespace",
       "match": "\\b([A-Z][a-zA-Z0-9_]*)(\\.)([a-z_][a-zA-Z0-9_]*!?)",
       "captures": {
-        "1": { "name": "entity.name.namespace.claw" },
-        "2": { "name": "punctuation.accessor.claw" },
-        "3": { "name": "support.function.claw" }
+        "1": { "name": "entity.name.namespace.achuk" },
+        "2": { "name": "punctuation.accessor.achuk" },
+        "3": { "name": "support.function.achuk" }
       }
     },
     "lambda": {
       "comment": "|a, b| — lambda parameter list",
       "match": "(\\|)([^|]*)(\\|)",
       "captures": {
-        "1": { "name": "punctuation.definition.parameters.begin.claw" },
-        "2": { "patterns": [{ "match": "[a-z_][a-zA-Z0-9_]*", "name": "variable.parameter.claw" }] },
-        "3": { "name": "punctuation.definition.parameters.end.claw" }
+        "1": { "name": "punctuation.definition.parameters.begin.achuk" },
+        "2": { "patterns": [{ "match": "[a-z_][a-zA-Z0-9_]*", "name": "variable.parameter.achuk" }] },
+        "3": { "name": "punctuation.definition.parameters.end.achuk" }
       }
     },
     "definition": {
       "match": "^\\s*([a-z_][a-zA-Z0-9_]*!?)\\s*(=)(?!=)",
       "captures": {
-        "1": { "name": "entity.name.function.claw" },
-        "2": { "name": "keyword.operator.assignment.claw" }
+        "1": { "name": "entity.name.function.achuk" },
+        "2": { "name": "keyword.operator.assignment.achuk" }
       }
     },
     "operators": {
       "match": "->|=>|==|!=|<=|>=|\\+|-|\\*|/|%|<|>|=",
-      "name": "keyword.operator.claw"
+      "name": "keyword.operator.achuk"
     },
     "punctuation": {
       "match": "[{}\\[\\](),.]",
-      "name": "punctuation.claw"
+      "name": "punctuation.achuk"
     }
   }
 }

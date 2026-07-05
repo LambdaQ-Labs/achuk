@@ -1,0 +1,7 @@
+# The smallest useful Achuk program. Run it with: achuk run hello.achuk
+greet = |who| "Hello, ${who}!"
+
+main! = |_args| {
+    echo!(greet("world"))
+    Ok({})
+}

@@ -7,6 +7,6 @@
     { "name": "List.forEach", "ty": "List a, (a -> Task Unit) -> Task Unit" },
     { "name": "Task.ok", "ty": "a -> Task a" }
   ],
-  "grade": { "compile": true, "tests": ["tests/notify_all_spec.claw"], "contracts": [], "forbidden": ["hallucinated-symbol"] },
-  "reference": "solutions/effect-004.claw"
+  "grade": { "compile": true, "tests": ["tests/notify_all_spec.achuk"], "contracts": [], "forbidden": ["hallucinated-symbol"] },
+  "reference": "solutions/effect-004.achuk"
 }

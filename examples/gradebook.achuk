@@ -1,0 +1,28 @@
+# gradebook — class average and letter grades.
+# Demonstrates: List.fold, mapping, conditionals, string building.
+
+average : List(U64) -> U64
+average = |scores| List.fold(scores, 0, |acc, s| acc + s) / scores.len()
+
+letter : U64 -> Str
+letter = |score| {
+    if score >= 90 "A"
+    else if score >= 80 "B"
+    else if score >= 70 "C"
+    else if score >= 60 "D"
+    else "F"
+}
+
+count_at_least : List(U64), U64 -> U64
+count_at_least = |scores, cut| List.count_if(scores, |s| s >= cut)
+
+main! = |_args| {
+    scores = [92, 78, 85, 64, 99, 71, 58, 88]
+    grades = List.map(scores, letter)
+
+    echo!("scores:  ${Str.join_with(List.map(scores, |s| s.to_str()), " ")}")
+    echo!("grades:  ${Str.join_with(grades, " ")}")
+    echo!("class average: ${average(scores).to_str()} (${letter(average(scores))})")
+    echo!("passing (>=60): ${count_at_least(scores, 60).to_str()}/${scores.len().to_str()}")
+    Ok({})
+}

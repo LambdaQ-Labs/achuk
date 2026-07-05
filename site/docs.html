@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Claw documentation — install, the AI, packages, CLI reference</title>
-<meta name="description" content="Everything you need to use Claw: one-command install, claw ai (generate verified code), the code database, MCP setup for Claude/Cursor, publishing packages, and the full CLI reference.">
-<link rel="canonical" href="https://clawlang.dev/docs.html">
+<title>Achuk documentation — install, the AI, packages, CLI reference</title>
+<meta name="description" content="Everything you need to use Achuk: one-command install, achuk ai (generate verified code), the code database, MCP setup for Claude/Cursor, publishing packages, and the full CLI reference.">
+<link rel="canonical" href="https://achuk.dev/docs.html">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M6 26 Q10 12 16 6 Q14 16 12 26 Z M13 26 Q17 13 23 7 Q20 17 18 26 Z M19 26 Q23 15 28 10 Q25 19 24 26 Z' fill='%23b45309'/%3E%3C/svg%3E">
 <style>
 :root{
@@ -67,9 +67,9 @@ tr.win td{color:var(--good);font-weight:600}
   <div class="hwrap">
     <a class="logo" href="index.html">
       <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true"><path d="M6 26 Q10 12 16 6 Q14 16 12 26 Z M13 26 Q17 13 23 7 Q20 17 18 26 Z M19 26 Q23 15 28 10 Q25 19 24 26 Z" fill="#b45309"/></svg>
-      Claw <span style="color:var(--dim);font-weight:400">Docs</span>
+      Achuk <span style="color:var(--dim);font-weight:400">Docs</span>
     </a>
-    <nav><a href="index.html">Home</a><a href="playground.html">Playground</a><a href="https://github.com/LambdaQ-Labs/claw">GitHub</a></nav>
+    <nav><a href="index.html">Home</a><a href="playground.html">Playground</a><a href="https://github.com/LambdaQ-Labs/achuk">GitHub</a></nav>
   </div>
 </header>
 
@@ -80,7 +80,7 @@ tr.win td{color:var(--good);font-weight:600}
   <a href="#quickstart">Quick start</a>
   <a href="#language">The language</a>
   <h4>The AI</h4>
-  <a href="#ai">claw ai</a>
+  <a href="#ai">achuk ai</a>
   <a href="#how-it-works">The four gates</a>
   <a href="#mcp">Claude, Cursor &amp; MCP</a>
   <h4>Ecosystem</h4>
@@ -95,38 +95,38 @@ tr.win td{color:var(--good);font-weight:600}
 </nav>
 
 <main>
-<h1>Claw documentation</h1>
+<h1>Achuk documentation</h1>
 <p class="lead">Everything in one download: the compiler, the tooling, an AI model
-fine-tuned to write Claw, and the guardrails that verify every line it produces.</p>
+fine-tuned to write Achuk, and the guardrails that verify every line it produces.</p>
 
 <section id="install">
 <h2>Install</h2>
-<pre>curl -fsSL https://clawlang.dev/install.sh | sh</pre>
-<p>One command, no sudo, no system dependencies. It installs to <code>~/.claw</code> and puts
-<code>claw</code> on your PATH. The bundle includes:</p>
+<pre>curl -fsSL https://achuk.dev/install.sh | sh</pre>
+<p>One command, no sudo, no system dependencies. It installs to <code>~/.achuk</code> and puts
+<code>achuk</code> on your PATH. The bundle includes:</p>
 <ul>
-  <li><code>claw</code> — the CLI (build, run, packages, AI)</li>
-  <li><code>clawc</code> — the compiler (100–200&nbsp;ms typechecks)</li>
-  <li><code>claw-mcp</code> — the MCP server for AI assistants</li>
-  <li><code>claw-lsp</code> — editor language server</li>
-  <li><code>claw-infer</code> + <code>model/claw-0.5b-q8.gguf</code> — the bundled AI model and its inference engine</li>
+  <li><code>achuk</code> — the CLI (build, run, packages, AI)</li>
+  <li><code>achukc</code> — the compiler (100–200&nbsp;ms typechecks)</li>
+  <li><code>achuk-mcp</code> — the MCP server for AI assistants</li>
+  <li><code>achuk-lsp</code> — editor language server</li>
+  <li><code>achuk-infer</code> + <code>model/achuk-0.5b-q8.gguf</code> — the bundled AI model and its inference engine</li>
 </ul>
-<p>Update any time with <code>claw upgrade</code>. Windows: download the zip from
-<a href="https://github.com/LambdaQ-Labs/claw/releases">GitHub Releases</a> and add <code>bin\</code> to PATH.</p>
-<div class="callout"><p><b>Linux note:</b> <code>claw run</code> (compile-and-execute) needs a system
-linker — <code>apt install binutils</code> covers it. <code>claw check</code> and everything else need nothing.</p></div>
+<p>Update any time with <code>achuk upgrade</code>. Windows: download the zip from
+<a href="https://github.com/LambdaQ-Labs/achuk/releases">GitHub Releases</a> and add <code>bin\</code> to PATH.</p>
+<div class="callout"><p><b>Linux note:</b> <code>achuk run</code> (compile-and-execute) needs a system
+linker — <code>apt install binutils</code> covers it. <code>achuk check</code> and everything else need nothing.</p></div>
 </section>
 
 <section id="quickstart">
 <h2>Quick start</h2>
-<pre><span class="p">$</span> claw new hello --platform cli
+<pre><span class="p">$</span> achuk new hello --platform cli
 <span class="p">$</span> cd hello
-<span class="p">$</span> claw run main.claw
+<span class="p">$</span> achuk run main.achuk
 Hello, world!
 
-<span class="p">$</span> claw check main.claw     <span class="c"># typecheck only — ~100 ms</span>
-<span class="p">$</span> claw fmt main.claw
-<span class="p">$</span> claw test</pre>
+<span class="p">$</span> achuk check main.achuk     <span class="c"># typecheck only — ~100 ms</span>
+<span class="p">$</span> achuk fmt main.achuk
+<span class="p">$</span> achuk test</pre>
 <p>Platforms decide what your program can touch: <code>--platform cli</code> for command-line
 apps, <code>--platform http</code> for a web service. The language itself has no I/O —
 that's what makes effects checkable.</p>
@@ -157,13 +157,13 @@ main! = |_args| {
     Ok({})
 }</pre>
 <p>Functional, effect-typed, expression-oriented. Full walkthrough:
-<a href="https://github.com/LambdaQ-Labs/claw/blob/main/docs/tour.md">the tour</a> (15 minutes,
+<a href="https://github.com/LambdaQ-Labs/achuk/blob/main/docs/tour.md">the tour</a> (15 minutes,
 runnable examples).</p>
 </section>
 
 <section id="ai">
-<h2>claw ai — generate code that's checked before you see it</h2>
-<pre><span class="p">$</span> claw ai gen "define atleast10 : Nat -> Nat that computes Nat.max of x and 10"
+<h2>achuk ai — generate code that's checked before you see it</h2>
+<pre><span class="p">$</span> achuk ai gen "define atleast10 : Nat -> Nat that computes Nat.max of x and 10"
 ── generated ──
 atleast10 : Nat -> Nat
 atleast10 = |p0| Nat.max(p0, 10)
@@ -176,10 +176,10 @@ atleast10 = |p0| Nat.max(p0, 10)
 </ol>
 <p>And when the model gets it wrong, you see this instead of a bug:</p>
 <pre><span class="bad">── REJECTED ── real compiler found 1 error(s)</span></pre>
-<p>Claw never hands you unverified generated code. Management commands:</p>
-<pre>claw ai status    <span class="c"># where the model and server are</span>
-claw ai serve     <span class="c"># start the model server (gen does this automatically)</span>
-claw ai stop</pre>
+<p>Achuk never hands you unverified generated code. Management commands:</p>
+<pre>achuk ai status    <span class="c"># where the model and server are</span>
+achuk ai serve     <span class="c"># start the model server (gen does this automatically)</span>
+achuk ai stop</pre>
 <p>The model is a 0.5B fine-tune that runs on any laptop, CPU-only — no API key,
 no cloud, nothing leaves your machine.</p>
 </section>
@@ -188,7 +188,7 @@ no cloud, nothing leaves your machine.</p>
 <h2>The four gates</h2>
 <table>
   <tr><th>gate</th><th>what it stops</th></tr>
-  <tr><td>1 · Code database</td><td>guessing — the AI queries what exists (<code>claw db candidates "Nat, Nat -> Nat"</code>) instead of inventing an API</td></tr>
+  <tr><td>1 · Code database</td><td>guessing — the AI queries what exists (<code>achuk db candidates "Nat, Nat -> Nat"</code>) instead of inventing an API</td></tr>
   <tr><td>2 · Decode grammar</td><td>hallucination — out-of-scope names and undeclared effects are ungeneratable, not just discouraged</td></tr>
   <tr><td>3 · Real typecheck</td><td>structural errors — wrong arity, undefined helpers, ignored parameters</td></tr>
   <tr><td>4 · Executable contracts</td><td>wrong answers — code that typechecks but computes the wrong thing</td></tr>
@@ -199,35 +199,35 @@ went from 38 to 0, and the bundled model passes 121/121 tasks hallucination-free
 
 <section id="mcp">
 <h2>Claude, Cursor &amp; MCP</h2>
-<p>Any MCP-capable assistant can drive Claw natively. Add to your client's MCP config:</p>
+<p>Any MCP-capable assistant can drive Achuk natively. Add to your client's MCP config:</p>
 <pre>{
   "mcpServers": {
-    "claw": {
-      "command": "~/.claw/bin/claw-mcp",
-      "args": ["--db", "claw.cdb"]
+    "achuk": {
+      "command": "~/.achuk/bin/achuk-mcp",
+      "args": ["--db", "achuk.cdb"]
     }
   }
 }</pre>
-<p>Five tools become available: <code>claw_symbols</code> (what exists),
-<code>claw_candidates</code> (type-directed search), <code>claw_mask</code> (the decode grammar),
-<code>claw_render</code> (definition → source), and <code>claw_check</code> (real-compiler verdict
+<p>Five tools become available: <code>achuk_symbols</code> (what exists),
+<code>achuk_candidates</code> (type-directed search), <code>achuk_mask</code> (the decode grammar),
+<code>achuk_render</code> (definition → source), and <code>achuk_check</code> (real-compiler verdict
 on generated code). Per-client setup for Claude Code, Claude Desktop, Cursor,
 Windsurf, VS Code, Zed, Gemini CLI, and Codex CLI:
-<a href="https://github.com/LambdaQ-Labs/claw/blob/main/docs/mcp.md">docs/mcp.md</a>.</p>
+<a href="https://github.com/LambdaQ-Labs/achuk/blob/main/docs/mcp.md">docs/mcp.md</a>.</p>
 </section>
 
 <section id="packages">
 <h2>Packages</h2>
-<pre><span class="p">$</span> claw add somelib          <span class="c"># fetch from registry.clawlang.dev</span>
-<span class="p">$</span> claw publish               <span class="c"># publish your own</span></pre>
-<p>Claw's registry has one rule no other registry has: <b>every package must be
+<pre><span class="p">$</span> achuk add somelib          <span class="c"># fetch from registry.achuk.dev</span>
+<span class="p">$</span> achuk publish               <span class="c"># publish your own</span></pre>
+<p>Achuk's registry has one rule no other registry has: <b>every package must be
 AI-legible</b>. Publishing exports the package's definitions — names, types, effect
 rows, docs — and the registry rejects packages without them. When you
-<code>claw add</code> a package, those definitions flow into your project's code database:</p>
+<code>achuk add</code> a package, those definitions flow into your project's code database:</p>
 <ul>
   <li>your editor's completions know the package immediately,</li>
   <li>your AI assistant (MCP) can query it,</li>
-  <li><code>claw ai gen</code> can call it — grammar-constrained, like everything else.</li>
+  <li><code>achuk ai gen</code> can call it — grammar-constrained, like everything else.</li>
 </ul>
 <p>Install a package, and every tool — human-facing or AI-facing — understands it.
 No docs to scrape, no types to guess. Packages are content-addressed (identity =
@@ -237,43 +237,43 @@ hash), which also makes typosquatting economically pointless.</p>
 <section id="editors">
 <h2>Editor support</h2>
 <ul>
-  <li><b>VS Code / Cursor / Windsurf:</b> the <a href="https://github.com/LambdaQ-Labs/claw/tree/main/editors/vscode">Claw extension</a> — syntax highlighting, snippets. Install the <code>.vsix</code> until it's on the marketplace.</li>
-  <li><b>Any LSP editor:</b> point it at <code>claw-lsp --db claw.cdb</code> for completions and hover types.</li>
+  <li><b>VS Code / Cursor / Windsurf:</b> the <a href="https://github.com/LambdaQ-Labs/achuk/tree/main/editors/vscode">Achuk extension</a> — syntax highlighting, snippets. Install the <code>.vsix</code> until it's on the marketplace.</li>
+  <li><b>Any LSP editor:</b> point it at <code>achuk-lsp --db achuk.cdb</code> for completions and hover types.</li>
   <li><b>AI assistants:</b> the MCP server above.</li>
 </ul>
 </section>
 
 <section id="codedb">
 <h2>The code database</h2>
-<p>Claw code lives in a queryable, content-addressed database — the thing that
+<p>Achuk code lives in a queryable, content-addressed database — the thing that
 makes the AI honest and refactors instant.</p>
-<pre><span class="p">$</span> claw index .                                <span class="c"># ingest your project</span>
-<span class="p">$</span> claw db symbols                              <span class="c"># everything that exists</span>
-<span class="p">$</span> claw db candidates "Str -> Str"              <span class="c"># type-directed search</span>
-<span class="p">$</span> claw db callers Nat.add                      <span class="c"># impact analysis</span>
-<span class="p">$</span> claw db eval myFunc 3 4                      <span class="c"># run a definition</span>
-<span class="p">$</span> claw db eval --real myFunc 3 4               <span class="c"># …through the actual compiler</span></pre>
+<pre><span class="p">$</span> achuk index .                                <span class="c"># ingest your project</span>
+<span class="p">$</span> achuk db symbols                              <span class="c"># everything that exists</span>
+<span class="p">$</span> achuk db candidates "Str -> Str"              <span class="c"># type-directed search</span>
+<span class="p">$</span> achuk db callers Nat.add                      <span class="c"># impact analysis</span>
+<span class="p">$</span> achuk db eval myFunc 3 4                      <span class="c"># run a definition</span>
+<span class="p">$</span> achuk db eval --real myFunc 3 4               <span class="c"># …through the actual compiler</span></pre>
 <p>For AI-written code, the verification commands:</p>
-<pre><span class="p">$</span> claw defs-check out.json task.json           <span class="c"># real-compiler verdict</span>
-<span class="p">$</span> claw defs-grade out.json task.json           <span class="c"># + executed contracts, as JSON</span>
-<span class="p">$</span> claw task-grammar task.json                  <span class="c"># the decode grammar for a scope</span></pre>
+<pre><span class="p">$</span> achuk defs-check out.json task.json           <span class="c"># real-compiler verdict</span>
+<span class="p">$</span> achuk defs-grade out.json task.json           <span class="c"># + executed contracts, as JSON</span>
+<span class="p">$</span> achuk task-grammar task.json                  <span class="c"># the decode grammar for a scope</span></pre>
 </section>
 
 <section id="cli">
 <h2>CLI reference</h2>
 <table>
   <tr><th>command</th><th>what it does</th></tr>
-  <tr><td><code>claw new &lt;name&gt; [--platform cli|http]</code></td><td>scaffold a project</td></tr>
-  <tr><td><code>claw run / check / build / fmt / test / repl</code></td><td>the compiler, passthrough</td></tr>
-  <tr><td><code>claw ai gen|serve|status|stop</code></td><td>the bundled model, guardrailed</td></tr>
-  <tr><td><code>claw index &lt;dir&gt;</code></td><td>ingest sources into the code database</td></tr>
-  <tr><td><code>claw db …</code></td><td>query it: symbols, candidates, callers, deps, render, eval, mask</td></tr>
-  <tr><td><code>claw add / publish</code></td><td>packages (registry.clawlang.dev)</td></tr>
-  <tr><td><code>claw defs-check / defs-grade / task-grammar</code></td><td>verify AI-generated code</td></tr>
-  <tr><td><code>claw emit-rust</code></td><td>transpile definitions to Rust</td></tr>
-  <tr><td><code>claw corpus gen</code></td><td>synthetic training data from a code database</td></tr>
-  <tr><td><code>claw telemetry [off|on|full|share|clear]</code></td><td>usage metrics controls</td></tr>
-  <tr><td><code>claw upgrade [--check]</code></td><td>self-update from GitHub Releases</td></tr>
+  <tr><td><code>achuk new &lt;name&gt; [--platform cli|http]</code></td><td>scaffold a project</td></tr>
+  <tr><td><code>achuk run / check / build / fmt / test / repl</code></td><td>the compiler, passthrough</td></tr>
+  <tr><td><code>achuk ai gen|serve|status|stop</code></td><td>the bundled model, guardrailed</td></tr>
+  <tr><td><code>achuk index &lt;dir&gt;</code></td><td>ingest sources into the code database</td></tr>
+  <tr><td><code>achuk db …</code></td><td>query it: symbols, candidates, callers, deps, render, eval, mask</td></tr>
+  <tr><td><code>achuk add / publish</code></td><td>packages (registry.achuk.dev)</td></tr>
+  <tr><td><code>achuk defs-check / defs-grade / task-grammar</code></td><td>verify AI-generated code</td></tr>
+  <tr><td><code>achuk emit-rust</code></td><td>transpile definitions to Rust</td></tr>
+  <tr><td><code>achuk corpus gen</code></td><td>synthetic training data from a code database</td></tr>
+  <tr><td><code>achuk telemetry [off|on|full|share|clear]</code></td><td>usage metrics controls</td></tr>
+  <tr><td><code>achuk upgrade [--check]</code></td><td>self-update from GitHub Releases</td></tr>
 </table>
 </section>
 
@@ -281,11 +281,11 @@ makes the AI honest and refactors instant.</p>
 <h2>Telemetry &amp; privacy</h2>
 <ul>
   <li><b>Default:</b> anonymous metrics only — command kinds, verdict flags, error counts. <b>Never your code, paths, or prompts.</b></li>
-  <li><b>It announces itself</b> on first use and one command turns it off: <code>claw telemetry off</code> (or <code>CLAW_TELEMETRY=off</code>). Off means zero writes.</li>
-  <li><b>Sharing code samples for training is strictly opt-in</b> (<code>claw telemetry full</code>).</li>
-  <li>The local log is plain JSONL you can read (<code>~/.claw/telemetry/</code>), capped at 4&nbsp;MiB.</li>
+  <li><b>It announces itself</b> on first use and one command turns it off: <code>achuk telemetry off</code> (or <code>ACHUK_TELEMETRY=off</code>). Off means zero writes.</li>
+  <li><b>Sharing code samples for training is strictly opt-in</b> (<code>achuk telemetry full</code>).</li>
+  <li>The local log is plain JSONL you can read (<code>~/.achuk/telemetry/</code>), capped at 4&nbsp;MiB.</li>
 </ul>
-<p>Full policy: <a href="https://github.com/LambdaQ-Labs/claw/blob/main/docs/telemetry.md">docs/telemetry.md</a>.</p>
+<p>Full policy: <a href="https://github.com/LambdaQ-Labs/achuk/blob/main/docs/telemetry.md">docs/telemetry.md</a>.</p>
 </section>
 
 <section id="numbers">
@@ -294,7 +294,7 @@ makes the AI honest and refactors instant.</p>
 identical grading for all arms. Same model, five languages:</p>
 <table>
   <tr><th>arm</th><th>0.5B model</th><th>7B model</th></tr>
-  <tr class="win"><td>Claw (fine-tuned)</td><td>94%</td><td>94%</td></tr>
+  <tr class="win"><td>Achuk (fine-tuned)</td><td>94%</td><td>94%</td></tr>
   <tr><td>JavaScript (stock)</td><td>89%</td><td>68%</td></tr>
   <tr><td>Python (stock)</td><td>56%</td><td>71%</td></tr>
   <tr><td>Rust (stock)</td><td>35%</td><td>87%</td></tr>
@@ -302,20 +302,20 @@ identical grading for all arms. Same model, five languages:</p>
 </table>
 <p>Reference gate: 121/121 tasks hallucination-free and effect-sound, at both model
 scales. Reproduce everything from the
-<a href="https://github.com/LambdaQ-Labs/claw/tree/main/bench">committed harness</a>;
+<a href="https://github.com/LambdaQ-Labs/achuk/tree/main/bench">committed harness</a>;
 method and honest caveats in
-<a href="https://github.com/LambdaQ-Labs/claw/blob/main/docs/parity-2026-07-05.md">the parity report</a>.</p>
+<a href="https://github.com/LambdaQ-Labs/achuk/blob/main/docs/parity-2026-07-05.md">the parity report</a>.</p>
 </section>
 
 <section id="deeper">
 <h2>Going deeper</h2>
 <ul>
-  <li><a href="https://github.com/LambdaQ-Labs/claw/blob/main/docs/tour.md">Language tour</a> — every feature, runnable</li>
-  <li><a href="https://github.com/LambdaQ-Labs/claw/blob/main/docs/getting-started.md">Getting started</a> — the longer version of this page</li>
-  <li><a href="https://github.com/LambdaQ-Labs/claw/blob/main/docs/networking.md">Networking</a> — the HTTP platform</li>
-  <li><a href="https://github.com/LambdaQ-Labs/claw/blob/main/docs/benchmark-harness.md">Benchmark harness</a> — how grading works, add a task (good first issue)</li>
-  <li><a href="https://github.com/LambdaQ-Labs/claw/blob/main/docs/master-plan.md">Master plan</a> — the thesis and the roadmap</li>
-  <li><a href="https://github.com/LambdaQ-Labs/claw/blob/main/CONTRIBUTING.md">Contributing</a></li>
+  <li><a href="https://github.com/LambdaQ-Labs/achuk/blob/main/docs/tour.md">Language tour</a> — every feature, runnable</li>
+  <li><a href="https://github.com/LambdaQ-Labs/achuk/blob/main/docs/getting-started.md">Getting started</a> — the longer version of this page</li>
+  <li><a href="https://github.com/LambdaQ-Labs/achuk/blob/main/docs/networking.md">Networking</a> — the HTTP platform</li>
+  <li><a href="https://github.com/LambdaQ-Labs/achuk/blob/main/docs/benchmark-harness.md">Benchmark harness</a> — how grading works, add a task (good first issue)</li>
+  <li><a href="https://github.com/LambdaQ-Labs/achuk/blob/main/docs/master-plan.md">Master plan</a> — the thesis and the roadmap</li>
+  <li><a href="https://github.com/LambdaQ-Labs/achuk/blob/main/CONTRIBUTING.md">Contributing</a></li>
 </ul>
 </section>
 </main>

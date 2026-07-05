@@ -9,9 +9,9 @@
   ],
   "grade": {
     "compile": true,
-    "tests": ["tests/sum_spec.claw"],
+    "tests": ["tests/sum_spec.achuk"],
     "contracts": [],
     "forbidden": ["hallucinated-symbol"]
   },
-  "reference": "solutions/from-scratch-003.claw"
+  "reference": "solutions/from-scratch-003.achuk"
 }

@@ -48,7 +48,7 @@ email; use the listed form/route.
 - **Latent Space podcast** — no cold email; needs a warm intro to
   swyx/Alessio, ~1 month lead. Start hunting the intro now.
 - **dev.to** — publish the "how grammar-constrained generation works"
-  tutorial with canonical_url → clawlang.dev.
+  tutorial with canonical_url → achuk.dev.
 - InfoWorld (contributor form), Ars Technica (contact form only).
 
 ## Reddit posture

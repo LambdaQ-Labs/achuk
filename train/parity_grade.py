@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Grade the parity completions: functional Pass@1, five languages.
 
-For every task: enumerate the same test cases the Claw grader uses (an
+For every task: enumerate the same test cases the Achuk grader uses (an
 integer grid 0..=3 per parameter, preconditions filtering), run the
 generated function on each case, and check every contract with the actual
-result. Claw defs are graded by `claw defs-grade` (compile + executed
+result. Achuk defs are graded by `achuk defs-grade` (compile + executed
 contracts); Python/JS run under their interpreters; Go/Rust are compiled
 per task.
 
@@ -12,7 +12,7 @@ per task.
 """
 import itertools, json, os, re, subprocess, sys, tempfile
 
-CLAW = os.environ.get("CLAW_BIN", "../target/debug/claw")
+ACHUK = os.environ.get("ACHUK_BIN", "../target/debug/achuk")
 BOUND = 3
 TIMEOUT = 20
 
@@ -181,7 +181,7 @@ def write(td, fname, content):
     return p
 
 
-def grade_claw(line):
+def grade_achuk(line):
     if line["defs"] is None:
         return False
     task = json.load(open(line["task"]))
@@ -191,7 +191,7 @@ def grade_claw(line):
         json.dump(line["defs"], f)
         defs_path = f.name
     try:
-        p = run([CLAW, "defs-grade", defs_path, line["task"]])
+        p = run([ACHUK, "defs-grade", defs_path, line["task"]])
         if p.returncode != 0:
             return False
         r = json.loads(p.stdout)
@@ -203,7 +203,7 @@ def grade_claw(line):
 
 results = {}
 for arm, path, fn in [
-    ("claw-tuned", "parity-claw.jsonl", grade_claw),
+    ("achuk-tuned", "parity-achuk.jsonl", grade_achuk),
     ("python", "parity-py.jsonl", lambda l: grade_lang("py", l)),
     ("javascript", "parity-js.jsonl", lambda l: grade_lang("js", l)),
     ("go", "parity-go.jsonl", lambda l: grade_lang("go", l)),
@@ -232,8 +232,8 @@ for arm, path, fn in [
         print(f"{'':12} fails: {', '.join(fails[:6])}{' …' if len(fails) > 6 else ''}")
 
 print()
-if "claw-tuned" in results and "python" in results:
-    c, cn = results["claw-tuned"]
+if "achuk-tuned" in results and "python" in results:
+    c, cn = results["achuk-tuned"]
     p, pn = results["python"]
     verdict = "PASSES" if cn and pn and (c / cn) >= (p / pn) else "does not pass"
-    print(f"P4 gate (tuned-Claw >= stock-Python): {verdict}")
+    print(f"P4 gate (tuned-Achuk >= stock-Python): {verdict}")

@@ -1,7 +1,7 @@
 {
   "id": "gen-atmost3-v1",
   "category": "contract",
-  "prompt": "In Claw, define `atmost3` (parameter p0 = x) : Nat -> Nat applying `Nat.min` to x and the constant 3.",
+  "prompt": "In Achuk, define `atmost3` (parameter p0 = x) : Nat -> Nat applying `Nat.min` to x and the constant 3.",
   "scope": [
     {
       "name": "Nat.min",

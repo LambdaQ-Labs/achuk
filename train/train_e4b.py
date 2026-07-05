@@ -21,7 +21,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="unsloth/Qwen2.5-Coder-3B-Instruct")
     ap.add_argument("--corpus", default="corpus-v4.jsonl")
-    ap.add_argument("--out", default="claw-lora-e4b")
+    ap.add_argument("--out", default="achuk-lora-e4b")
     ap.add_argument("--epochs", type=float, default=3.0)
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--batch", type=int, default=4)

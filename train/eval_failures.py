@@ -4,7 +4,7 @@
 Batched tuned-arm-only rerun of the gate; prints a JSON line per failing task
 so the corpus can be grown to cover exactly the shapes that still miss.
 
-    python eval_failures.py            # expects ./claw-lora and ../bench/tasks-large
+    python eval_failures.py            # expects ./achuk-lora and ../bench/tasks-large
 """
 import json, glob, torch, re, os
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -18,7 +18,7 @@ tok = AutoTokenizer.from_pretrained(BASE, padding_side="left")
 if tok.pad_token is None:
     tok.pad_token = tok.eos_token
 m = AutoModelForCausalLM.from_pretrained(BASE, torch_dtype=torch.bfloat16, device_map="auto")
-m = PeftModel.from_pretrained(m, "claw-lora")
+m = PeftModel.from_pretrained(m, "achuk-lora")
 
 
 def gen_batch(prompts):

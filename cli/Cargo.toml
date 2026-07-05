@@ -1,22 +1,22 @@
 [package]
-name = "claw-cli"
+name = "achuk-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "claw"
+name = "achuk"
 path = "src/main.rs"
 
 [dependencies]
-claw-core = { path = "../crates/claw-core" }
-claw-cdb = { path = "../cdb" }
-claw-constraint = { path = "../constraint-server" }
-claw-emit-rust = { path = "../emit-rust" }
-claw-corpus = { path = "../corpus" }
-claw-contract = { path = "../contract" }
-claw-bench-grader = { path = "../bench/grader" }
-claw-telemetry = { path = "../telemetry" }
+achuk-core = { path = "../crates/achuk-core" }
+achuk-cdb = { path = "../cdb" }
+achuk-constraint = { path = "../constraint-server" }
+achuk-emit-rust = { path = "../emit-rust" }
+achuk-corpus = { path = "../corpus" }
+achuk-contract = { path = "../contract" }
+achuk-bench-grader = { path = "../bench/grader" }
+achuk-telemetry = { path = "../telemetry" }
 ureq = { version = "2", features = ["json"] }
 sha2 = "0.10"
 serde = { workspace = true }

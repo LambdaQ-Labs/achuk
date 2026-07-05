@@ -68,7 +68,7 @@ weak), standard = a ~2.5 GB 3-4B (stronger, still CPU-viable). Quantize the
 winner to GGUF q4_k_m, re-run the full gate + parity + A2 for the launch
 headline.
 
-Adapter (`claw-lora-e4b`, 131 MB, gitignored) and raw outputs
+Adapter (`achuk-lora-e4b`, 131 MB, gitignored) and raw outputs
 (`train/outputs-e4b-{large,holdout}.jsonl`) are kept for the follow-up.
 Cost of this experiment: ~$0.30.
 
@@ -97,7 +97,7 @@ which is why an unfair 180-cap scored the bigger models near 0)
 Two hard findings:
 
 1. **Strong bases, weak-teaching corpus.** Untrained Coder-3B and E4B both
-   score 56% clean on the held-out set with ZERO Claw exposure (vs the
+   score 56% clean on the held-out set with ZERO Achuk exposure (vs the
    0.5B base's ~0%). These models already follow the Def-JSON protocol
    in-context. That reframes the whole problem: for a capable base, the
    corpus's job shifts from "teach the format" to "don't degrade it."
@@ -109,7 +109,7 @@ Two hard findings:
    dropped braces (`{"Var": "p0", {"Lit"…`) — an adapter that is applied
    but corrupting output. E4B, trained through **unsloth** QLoRA on the
    same corpus, tuned cleanly to 88%. The variable is the training path,
-   not the model: our newly-added `CLAW_4BIT` path in train.py
+   not the model: our newly-added `ACHUK_4BIT` path in train.py
    (BitsAndBytesConfig + prepare_model_for_kbit_training + gradient
    checkpointing) is suspect; unsloth's path is known-good.
 

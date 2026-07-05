@@ -1,17 +1,17 @@
 [package]
-name = "claw-bench-runner"
+name = "achuk-bench-runner"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "claw-bench"
+name = "achuk-bench"
 path = "src/main.rs"
 
 [dependencies]
-claw-core = { path = "../../crates/claw-core" }
-claw-constraint = { path = "../../constraint-server" }
-claw-bench-grader = { path = "../grader" }
+achuk-core = { path = "../../crates/achuk-core" }
+achuk-constraint = { path = "../../constraint-server" }
+achuk-bench-grader = { path = "../grader" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }

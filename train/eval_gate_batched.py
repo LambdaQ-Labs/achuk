@@ -5,25 +5,25 @@ Same scoring as eval_gate.py, but generates in batches (left-padded greedy)
 so a 3090 finishes in minutes instead of ~40. The adapter is toggled with
 `disable_adapter()` so base and tuned share one model (the PEFT gotcha).
 
-    python eval_gate_batched.py            # expects ./claw-lora and ../bench/tasks-large
+    python eval_gate_batched.py            # expects ./achuk-lora and ../bench/tasks-large
 """
 import json, glob, os, torch, re
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 
-BASE = os.environ.get("CLAW_BASE_MODEL", "Qwen/Qwen2.5-Coder-0.5B-Instruct")
-BS = int(os.environ.get("CLAW_BS", "32"))
+BASE = os.environ.get("ACHUK_BASE_MODEL", "Qwen/Qwen2.5-Coder-0.5B-Instruct")
+BS = int(os.environ.get("ACHUK_BS", "32"))
 PROTO = open("train.py").read().split('PROTOCOL = """')[1].split('"""')[0]
 
 tok = AutoTokenizer.from_pretrained(BASE, padding_side="left")
 if tok.pad_token is None:
     tok.pad_token = tok.eos_token
 _kw = {"torch_dtype": torch.bfloat16, "device_map": "auto"}
-if os.environ.get("CLAW_4BIT"):
+if os.environ.get("ACHUK_4BIT"):
     from transformers import BitsAndBytesConfig
     _kw["quantization_config"] = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.bfloat16)
 m = AutoModelForCausalLM.from_pretrained(BASE, **_kw)
-m = PeftModel.from_pretrained(m, os.environ.get("CLAW_ADAPTER", "claw-lora"))  # one model; toggle the adapter
+m = PeftModel.from_pretrained(m, os.environ.get("ACHUK_ADAPTER", "achuk-lora"))  # one model; toggle the adapter
 
 
 def gen_batch(prompts, tag):
@@ -121,7 +121,7 @@ def check(raw, scope):
     used = [v for v in expr_vars(j) if not re.match(r'^p\d+$', v)]
     hall = [v for v in used if v not in names]
     # Effect soundness: the declared rows must cover the union of the used
-    # symbols' rows (mirrors claw_effects::check_by_names in the grader).
+    # symbols' rows (mirrors achuk_effects::check_by_names in the grader).
     required = set()
     for n, _, eff in scope:
         if n in used:
@@ -134,7 +134,7 @@ def check(raw, scope):
     return (True, len(hall) == 0, required <= declared)
 
 
-TASKS_DIR = os.environ.get("CLAW_TASKS", "../bench/tasks-large")
+TASKS_DIR = os.environ.get("ACHUK_TASKS", "../bench/tasks-large")
 files = sorted(glob.glob(TASKS_DIR + "/*.json"))
 tasks = [json.load(open(f)) for f in files]
 scopes, prompts = [], []
@@ -161,7 +161,7 @@ for k in ("base", "tuned"):
           f"effects_sound={e}/{n} ({100 * e // n}%)  clean={clean}/{n} ({100 * clean // n}%)")
 
 # Dump the tuned arm's raw parses for the real-compiler pass back home:
-# `claw defs-check --batch outputs.jsonl` (task file path + Def-JSON).
+# `achuk defs-check --batch outputs.jsonl` (task file path + Def-JSON).
 with open("outputs.jsonl", "w") as fh:
     for f, raw in zip(files, res["tuned"]):
         try:

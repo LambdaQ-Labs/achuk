@@ -1,5 +1,5 @@
 [package]
-name = "claw-play"
+name = "achuk-play"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,8 +8,8 @@ license.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-claw-core = { path = "../../crates/claw-core" }
-claw-constraint = { path = "../../constraint-server", default-features = false }
+achuk-core = { path = "../../crates/achuk-core" }
+achuk-constraint = { path = "../../constraint-server", default-features = false }
 serde = { workspace = true }
 serde_json = { workspace = true }
 wasm-bindgen = "0.2"

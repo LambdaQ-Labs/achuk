@@ -1,5 +1,5 @@
 [package]
-name = "claw-constraint"
+name = "achuk-constraint"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,10 +8,10 @@ license.workspace = true
 # The CDB-backed query path (legal_continuations). Off for wasm targets,
 # where the grammar projection runs over caller-supplied continuations.
 default = ["cdb"]
-cdb = ["dep:claw-cdb"]
+cdb = ["dep:achuk-cdb"]
 
 [dependencies]
-claw-core = { path = "../crates/claw-core" }
-claw-cdb = { path = "../cdb", optional = true }
-claw-diagnostics = { path = "../diagnostics" }
+achuk-core = { path = "../crates/achuk-core" }
+achuk-cdb = { path = "../cdb", optional = true }
+achuk-diagnostics = { path = "../diagnostics" }
 serde = { workspace = true }

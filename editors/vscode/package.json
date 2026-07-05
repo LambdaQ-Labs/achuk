@@ -1,16 +1,16 @@
 {
-  "name": "claw-lang",
-  "displayName": "Claw Language",
-  "description": "Syntax highlighting, snippets, and language configuration for Claw — the AI-first programming language. Works in VS Code, Cursor, Windsurf, and VSCodium.",
+  "name": "achuk-lang",
+  "displayName": "Achuk Language",
+  "description": "Syntax highlighting, snippets, and language configuration for Achuk — the AI-first programming language. Works in VS Code, Cursor, Windsurf, and VSCodium.",
   "version": "0.1.0",
   "publisher": "lambdaq-labs",
   "license": "UPL-1.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/LambdaQ-Labs/claw",
+    "url": "https://github.com/LambdaQ-Labs/achuk",
     "directory": "editors/vscode"
   },
-  "homepage": "https://clawlang.dev",
+  "homepage": "https://achuk.dev",
   "engines": {
     "vscode": "^1.75.0"
   },
@@ -19,8 +19,8 @@
     "Snippets"
   ],
   "keywords": [
-    "claw",
-    "clawlang",
+    "achuk",
+    "achuk",
     "ai",
     "agents",
     "functional"
@@ -28,28 +28,28 @@
   "contributes": {
     "languages": [
       {
-        "id": "claw",
+        "id": "achuk",
         "aliases": [
-          "Claw",
-          "claw"
+          "Achuk",
+          "achuk"
         ],
         "extensions": [
-          ".claw"
+          ".achuk"
         ],
         "configuration": "./language-configuration.json"
       }
     ],
     "grammars": [
       {
-        "language": "claw",
-        "scopeName": "source.claw",
-        "path": "./syntaxes/claw.tmLanguage.json"
+        "language": "achuk",
+        "scopeName": "source.achuk",
+        "path": "./syntaxes/achuk.tmLanguage.json"
       }
     ],
     "snippets": [
       {
-        "language": "claw",
-        "path": "./snippets/claw.json"
+        "language": "achuk",
+        "path": "./snippets/achuk.json"
       }
     ]
   }

@@ -8,7 +8,7 @@ task, both generate under the A1 prompt (task + in-scope symbols +
 protocol); we score valid-JSON and hallucination-free (uses only p0..
 params and real in-scope symbols).
 
-    python eval_gate.py            # expects ./claw-lora and ../bench/tasks-large
+    python eval_gate.py            # expects ./achuk-lora and ../bench/tasks-large
 """
 import json, glob, torch, re
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -19,7 +19,7 @@ PROTO = open("train.py").read().split('PROTOCOL = """')[1].split('"""')[0]
 
 tok = AutoTokenizer.from_pretrained(BASE)
 m = AutoModelForCausalLM.from_pretrained(BASE, torch_dtype=torch.bfloat16, device_map="auto")
-m = PeftModel.from_pretrained(m, "claw-lora")  # one model; toggle the adapter
+m = PeftModel.from_pretrained(m, "achuk-lora")  # one model; toggle the adapter
 
 
 def gen(prompt):

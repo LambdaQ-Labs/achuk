@@ -31,5 +31,5 @@ jobs:
         uses: mlugg/setup-zig@v1
         with:
           version: 0.16.0
-      - name: Build the compiler (clawc)
+      - name: Build the compiler (achukc)
         run: cd compiler && zig build roc

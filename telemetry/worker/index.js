@@ -1,22 +1,22 @@
-// Claw telemetry ingest — a Cloudflare Worker writing to R2.
+// Achuk telemetry ingest — a Cloudflare Worker writing to R2.
 //
 // Cost profile (the whole point): Workers free tier = 100k requests/day,
 // R2 free tier = 10 GB storage + 1M writes/month. Telemetry uploads are
-// one gzipped JSONL batch per `claw telemetry share`, a few KiB each —
+// one gzipped JSONL batch per `achuk telemetry share`, a few KiB each —
 // this runs at $0 until the project has thousands of active users.
 //
 // Deploy:
 //   cd telemetry/worker
-//   wrangler r2 bucket create claw-telemetry
+//   wrangler r2 bucket create achuk-telemetry
 //   wrangler deploy
-// then point a route (telemetry.clawlang.dev/v1/ingest) at it.
+// then point a route (telemetry.achuk.dev/v1/ingest) at it.
 
 const MAX_BODY = 6 * 1024 * 1024; // one full client log, gzipped, with margin
 
 export default {
   async fetch(request, env) {
     if (request.method !== "POST" || new URL(request.url).pathname !== "/v1/ingest") {
-      return new Response("claw telemetry ingest\n", { status: 404 });
+      return new Response("achuk telemetry ingest\n", { status: 404 });
     }
     const len = Number(request.headers.get("content-length") || 0);
     if (len > MAX_BODY) {

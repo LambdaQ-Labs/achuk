@@ -4,8 +4,8 @@
 Cargo.lock
 *.rs.bk
 
-# Claw build artifacts
-*.claw.o
+# Achuk build artifacts
+*.achuk.o
 /dist
 
 # code-as-database local stores
@@ -33,7 +33,7 @@ Cargo.lock
 .env.local
 
 /dist
-model/claw-0.5b-q8.gguf
-model/claw-infer
+model/achuk-0.5b-q8.gguf
+model/achuk-infer
 train/adapter-e4b.tar.gz
-train/claw-lora-e4b/
+train/achuk-lora-e4b/

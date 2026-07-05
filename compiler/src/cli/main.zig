@@ -908,7 +908,7 @@ fn renderDiagnostics(build_env: *BuildEnv, stderr: anytype) Allocator.Error!void
     if (diag.errors > 0) {} else {}
 }
 
-/// The CLI entrypoint for the Claw compiler.
+/// The CLI entrypoint for the Achuk compiler.
 pub fn main(init: std.process.Init) Allocator.Error!void {
     // Initialize the debug IO with a real allocator so std.Options.debug_io
     // can spawn processes, create directories, etc.
@@ -976,7 +976,7 @@ pub fn main(init: std.process.Init) Allocator.Error!void {
             error.OutOfMemory => {
                 // Use std.debug.print to stderr since we don't have access to ctx.io here
                 // TODO: if virtual address allocation fails at 4gb, fall back on doing `roc build` followed by manually running the executable
-                std.debug.print("The Claw compiler ran out of memory trying to preallocate virtual address space for compiling and running this program. Try using `roc build` to build the executable separately, then run it manually.\n", .{});
+                std.debug.print("The Achuk compiler ran out of memory trying to preallocate virtual address space for compiling and running this program. Try using `roc build` to build the executable separately, then run it manually.\n", .{});
             },
             else => {
                 // All other errors: problems were already recorded/rendered by the
@@ -1126,7 +1126,7 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8, std_io: 
         .test_cmd => |test_args| try rocTest(&ctx, test_args, args[0]),
         .repl => |repl_args| rocRepl(&ctx, repl_args),
         .glue => |glue_args| try rocGlue(&ctx, glue_args),
-        .version => ctx.io.stdout().print("Claw compiler (clawc) version {s}\n", .{build_options.compiler_version}),
+        .version => ctx.io.stdout().print("Achuk compiler (achukc) version {s}\n", .{build_options.compiler_version}),
         .docs => |docs_args| rocDocs(&ctx, docs_args),
         .experimental_lsp => |lsp_args| try lsp.runWithStdIo(gpa, std_io, .{
             .transport = lsp_args.debug_io,

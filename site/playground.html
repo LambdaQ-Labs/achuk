@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Claw Playground — the real engine, in your browser</title>
-<meta name="description" content="Try Claw without installing anything. The playground runs the language's actual type engine, interpreter, and anti-hallucination grammar as WebAssembly — no servers.">
-<link rel="canonical" href="https://clawlang.dev/playground.html">
+<title>Achuk Playground — the real engine, in your browser</title>
+<meta name="description" content="Try Achuk without installing anything. The playground runs the language's actual type engine, interpreter, and anti-hallucination grammar as WebAssembly — no servers.">
+<link rel="canonical" href="https://achuk.dev/playground.html">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M6 26 Q10 12 16 6 Q14 16 12 26 Z M13 26 Q17 13 23 7 Q20 17 18 26 Z M19 26 Q23 15 28 10 Q25 19 24 26 Z' fill='%23b45309'/%3E%3C/svg%3E">
 <style>
 :root{
@@ -60,15 +60,15 @@ button:focus-visible{outline:2px solid var(--copper);outline-offset:2px}
   <div class="wrap">
     <a class="logo" href="index.html">
       <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true"><path d="M6 26 Q10 12 16 6 Q14 16 12 26 Z M13 26 Q17 13 23 7 Q20 17 18 26 Z M19 26 Q23 15 28 10 Q25 19 24 26 Z" fill="#b45309"/></svg>
-      Claw <span style="color:var(--dim);font-weight:400">Playground</span>
+      Achuk <span style="color:var(--dim);font-weight:400">Playground</span>
     </a>
-    <nav><a href="index.html">Home</a><a href="https://github.com/LambdaQ-Labs/claw">GitHub</a></nav>
+    <nav><a href="index.html">Home</a><a href="https://github.com/LambdaQ-Labs/achuk">GitHub</a></nav>
   </div>
 </header>
 
 <div class="wrap">
   <h1>The real engine, in your browser</h1>
-  <p class="sub">This is not a demo shell — it's Claw's actual type engine, interpreter, and
+  <p class="sub">This is not a demo shell — it's Achuk's actual type engine, interpreter, and
   anti-hallucination grammar compiled to WebAssembly. Nothing leaves your machine.</p>
   <div class="status" id="status">loading engine…</div>
 
@@ -96,7 +96,7 @@ button:focus-visible{outline:2px solid var(--copper);outline-offset:2px}
       <textarea id="defs" rows="7" spellcheck="false" aria-label="Def-JSON"></textarea>
       <div class="row">
         <button id="check">Check it</button>
-        <button class="ghost" id="renderb">Show as Claw code</button>
+        <button class="ghost" id="renderb">Show as Achuk code</button>
         <span class="mini">then run it:</span>
         <input type="text" id="callname" value="atleast10" style="width:130px;border:1.5px solid var(--line);border-radius:6px" aria-label="function to call">
         <input type="text" id="callargs" value="[3]" style="width:90px;border:1.5px solid var(--line);border-radius:6px" aria-label="arguments">
@@ -109,7 +109,7 @@ button:focus-visible{outline:2px solid var(--copper);outline-offset:2px}
 </div>
 
 <script type="module">
-import init, { set_scope, symbols, candidates, grammar, check_defs, render, run } from "./pkg/claw_play.js";
+import init, { set_scope, symbols, candidates, grammar, check_defs, render, run } from "./pkg/achuk_play.js";
 
 const $ = id => document.getElementById(id);
 
@@ -137,7 +137,7 @@ async function main(){
   $("scope").value = SCOPE;
   $("defs").value = DEFS;
   const n = set_scope($("scope").value);
-  $("status").innerHTML = '<span class="ok">engine ready</span> — claw-core + claw-constraint, 328 KB of WebAssembly, zero servers';
+  $("status").innerHTML = '<span class="ok">engine ready</span> — achuk-core + achuk-constraint, 328 KB of WebAssembly, zero servers';
   $("scopeinfo").textContent = n + " symbols loaded";
 
   $("load").onclick = () => {

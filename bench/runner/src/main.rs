@@ -1,17 +1,17 @@
-//! claw-bench — benchmark runner CLI (WS-J).
+//! achuk-bench — benchmark runner CLI (WS-J).
 //!
 //! Usage:
-//!   claw-bench run --arm A0 --tasks bench/tasks [--retries 3] [--json out.json]
+//!   achuk-bench run --arm A0 --tasks bench/tasks [--retries 3] [--json out.json]
 //!
 //! Model via env — either:
-//!   CLAW_MODEL_URL, CLAW_MODEL_NAME, CLAW_MODEL_KEY   (OpenAI-compatible HTTP)
-//!   CLAW_MODEL_CMD                                    (CLI generator, e.g.
+//!   ACHUK_MODEL_URL, ACHUK_MODEL_NAME, ACHUK_MODEL_KEY   (OpenAI-compatible HTTP)
+//!   ACHUK_MODEL_CMD                                    (CLI generator, e.g.
 //!       "vikasit run --pure -m opencode/deepseek-v4-flash-free")
-//! CLAW_MODEL_CMD wins if both are set. CLI generators can't take logit
+//! ACHUK_MODEL_CMD wins if both are set. CLI generators can't take logit
 //! masks — arm A2 refuses to run with one.
 
-use claw_bench_grader::Task;
-use claw_bench_runner::{
+use achuk_bench_grader::Task;
+use achuk_bench_runner::{
     aggregate, run_task, Arm, CmdGenerator, Generate, HttpGenerator, RunConfig,
 };
 use std::path::PathBuf;
@@ -27,7 +27,7 @@ fn real_main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().map(String::as_str) != Some("run") {
         anyhow::bail!(
-            "usage: claw-bench run --arm A0|A1 --tasks <dir> [--retries N] [--json <out>]"
+            "usage: achuk-bench run --arm A0|A1 --tasks <dir> [--retries N] [--json <out>]"
         );
     }
 
@@ -106,12 +106,12 @@ fn real_main() -> anyhow::Result<()> {
         retries
     );
 
-    let use_cmd = std::env::var("CLAW_MODEL_CMD").is_ok();
+    let use_cmd = std::env::var("ACHUK_MODEL_CMD").is_ok();
 
     // Distillation: generate with a strong model, keep only grader-VERIFIED
     // completions (compiled ∧ no hallucination), write as SFT corpus. This
     // is how HuggingFace-sourced (or procedural) prompts become training
-    // data — the completions are Claw, machine-checked, never hallucinated.
+    // data — the completions are Achuk, machine-checked, never hallucinated.
     if let Some(out) = &distill_out {
         return distill(&tasks, out, use_cmd);
     }
@@ -166,9 +166,9 @@ fn real_main() -> anyhow::Result<()> {
 
 /// Distill a verified SFT corpus: for each task, generate with the model,
 /// grade, and keep the (prompt, completion) pair only if it compiled with
-/// no hallucinated symbols. Output is JSONL matching claw-corpus::Example.
+/// no hallucinated symbols. Output is JSONL matching achuk-corpus::Example.
 fn distill(tasks: &[Task], out: &std::path::Path, use_cmd: bool) -> anyhow::Result<()> {
-    use claw_bench_runner::{build_prompt, grade_produced, parse_output, Arm};
+    use achuk_bench_runner::{build_prompt, grade_produced, parse_output, Arm};
     use std::io::Write;
 
     let mut file = std::fs::File::create(out)?;

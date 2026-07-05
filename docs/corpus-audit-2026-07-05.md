@@ -40,7 +40,7 @@ references across 1,661 examples).
 v4 is enough to *train the discipline* on every shape the Def-JSON protocol
 can express today. It is NOT yet enough for open-ended development:
 
-1. **Records** need `Type::Record` in claw-core first (surface + compiler
+1. **Records** need `Type::Record` in achuk-core first (surface + compiler
    already have them; the protocol doesn't).
 2. **Scale**: shape coverage ≠ volume. For a bigger base model, multiply
    each class by more type combinations (Str/Bool variants of If/Let/Match)

@@ -1,6 +1,6 @@
 # The `sys` platform
 
-A Claw platform providing real system I/O — proof that heavy lifting lives in
+A Achuk platform providing real system I/O — proof that heavy lifting lives in
 the platform host, not the language. The language has zero I/O; this host
 (self-contained Zig, `std`/`builtin` only) implements the effects.
 
@@ -10,10 +10,10 @@ the platform host, not the language. The language has zero I/O; this host
 - `Stdout.line! : Str => {}` — print a line
 
 ## How it works
-`platform/main.roc` maps host C-symbols to typed Claw effects:
+`platform/main.roc` maps host C-symbols to typed Achuk effects:
 `hosted { "roc_file_read": File.read!, "roc_env_get": Env.get!, ... }`.
-`platform/host.zig` implements `roc_file_read(path: ClawStr) ClawStr` etc.,
-marshalling `ClawStr` (refcounted) across the C ABI. Build the host:
+`platform/host.zig` implements `roc_file_read(path: AchukStr) AchukStr` etc.,
+marshalling `AchukStr` (refcounted) across the C ABI. Build the host:
 
 ```sh
 zig build-lib platform/host.zig -target aarch64-macos -O ReleaseSmall -lc \
@@ -21,7 +21,7 @@ zig build-lib platform/host.zig -target aarch64-macos -O ReleaseSmall -lc \
 ```
 
 Then a consumer app:
-```claw
+```achuk
 app [main!] { pf: platform "./platform/main.roc" }
 import pf.File
 import pf.Stdout

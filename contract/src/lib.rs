@@ -1,4 +1,4 @@
-//! claw-contract — executable contracts (WS-E).
+//! achuk-contract — executable contracts (WS-E).
 //!
 //! Contracts (`requires` / `ensures` / `example`) are not comments: they
 //! are a checkable predicate language. This crate parses the predicate

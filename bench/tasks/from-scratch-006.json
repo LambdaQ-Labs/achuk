@@ -6,6 +6,6 @@
     { "name": "Pair.first", "ty": "Pair a b -> a" },
     { "name": "Pair.second", "ty": "Pair a b -> b" }
   ],
-  "grade": { "compile": true, "tests": ["tests/snd_spec.claw"], "contracts": [], "forbidden": ["hallucinated-symbol"] },
-  "reference": "solutions/from-scratch-006.claw"
+  "grade": { "compile": true, "tests": ["tests/snd_spec.achuk"], "contracts": [], "forbidden": ["hallucinated-symbol"] },
+  "reference": "solutions/from-scratch-006.achuk"
 }

@@ -1,0 +1,32 @@
+# primes — every prime up to a limit, via trial division.
+# Demonstrates: type annotations, recursion, List.keep_if / count_if.
+
+has_divisor : U64, U64 -> Bool
+has_divisor = |n, d| {
+    if d * d > n False
+    else if n % d == 0 True
+    else has_divisor(n, d + 1)
+}
+
+is_prime : U64 -> Bool
+is_prime = |n| {
+    if n < 2 False
+    else if has_divisor(n, 2) False
+    else True
+}
+
+# build [1, 2, .., n] (no range builtin, so recurse)
+upto : U64 -> List(U64)
+upto = |n| if n <= 0 ([]) else List.append(upto(n - 1), n)
+
+main! = |_args| {
+    limit = 50
+    nums = upto(limit)
+    primes = List.keep_if(nums, is_prime)
+    count = List.count_if(nums, is_prime)
+    labels = List.map(primes, |p| p.to_str())
+    echo!("primes up to ${limit.to_str()}:")
+    echo!(Str.join_with(labels, " "))
+    echo!("count: ${count.to_str()}")
+    Ok({})
+}

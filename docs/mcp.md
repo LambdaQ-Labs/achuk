@@ -1,57 +1,57 @@
-# Claw MCP — wire the code-as-database into any AI coding tool
+# Achuk MCP — wire the code-as-database into any AI coding tool
 
-`claw-mcp` is a Model Context Protocol server (stdio transport) over a Claw
+`achuk-mcp` is a Model Context Protocol server (stdio transport) over a Achuk
 CDB. Any MCP client gets five tools:
 
 | tool | what it answers |
 |---|---|
-| `claw_symbols` | every definition that actually exists (`name : type`) |
-| `claw_candidates` | type-directed search: "what in scope has this type?" |
-| `claw_mask` | the legal-symbol set + GBNF grammar for constrained decoding |
-| `claw_render` | a definition rendered as `.claw` source |
-| `claw_check` | typecheck Def-JSON with the REAL compiler (needs `clawc`) |
+| `achuk_symbols` | every definition that actually exists (`name : type`) |
+| `achuk_candidates` | type-directed search: "what in scope has this type?" |
+| `achuk_mask` | the legal-symbol set + GBNF grammar for constrained decoding |
+| `achuk_render` | a definition rendered as `.achuk` source |
+| `achuk_check` | typecheck Def-JSON with the REAL compiler (needs `achukc`) |
 
-This is the anti-hallucination loop: an agent asks `claw_candidates` before
-writing a call, and verifies with `claw_check` after — instead of inventing
+This is the anti-hallucination loop: an agent asks `achuk_candidates` before
+writing a call, and verifies with `achuk_check` after — instead of inventing
 an API and finding out at review time.
 
-It's the same loop the bundled model uses: `claw ai gen` prompts from the
-same CDB, constrains decoding with the same grammar `claw_mask` serves, and
-verifies with the same real compiler as `claw_check`. MCP hands that loop
-to *your* agent. And because `claw add` ingests a package's published defs
+It's the same loop the bundled model uses: `achuk ai gen` prompts from the
+same CDB, constrains decoding with the same grammar `achuk_mask` serves, and
+verifies with the same real compiler as `achuk_check`. MCP hands that loop
+to *your* agent. And because `achuk add` ingests a package's published defs
 into the project CDB, these tools answer over installed packages too.
 
 ## Build / locate the binary
 
 ```sh
-cargo build --release --bin claw-mcp        # → target/release/claw-mcp
+cargo build --release --bin achuk-mcp        # → target/release/achuk-mcp
 ```
 
-Point it at your project's CDB (created by `claw index`):
+Point it at your project's CDB (created by `achuk index`):
 
 ```sh
-claw-mcp --db /path/to/project/claw.cdb
+achuk-mcp --db /path/to/project/achuk.cdb
 ```
 
-`claw_check` runs the vendored compiler: put `clawc` on PATH or set
-`CLAW_CLAWC=/path/to/clawc` in the server's env.
+`achuk_check` runs the vendored compiler: put `achukc` on PATH or set
+`ACHUK_CLAWC=/path/to/achukc` in the server's env.
 
 Below, replace `/abs/path/to/` with your actual paths. Every client speaks
 the same stdio protocol — only the config file differs.
 
 ## Claude Code
 
-Inside a Claw project, one command does everything (writes `.mcp.json`,
-locates `claw-mcp`, indexes the project):
+Inside a Achuk project, one command does everything (writes `.mcp.json`,
+locates `achuk-mcp`, indexes the project):
 
 ```sh
-claw mcp install
+achuk mcp install
 ```
 
 Or by hand:
 
 ```sh
-claude mcp add claw -- /abs/path/to/claw-mcp --db /abs/path/to/claw.cdb
+claude mcp add achuk -- /abs/path/to/achuk-mcp --db /abs/path/to/achuk.cdb
 ```
 
 Or per-project `.mcp.json`:
@@ -59,10 +59,10 @@ Or per-project `.mcp.json`:
 ```json
 {
   "mcpServers": {
-    "claw": {
-      "command": "/abs/path/to/claw-mcp",
-      "args": ["--db", "claw.cdb"],
-      "env": { "CLAW_CLAWC": "/abs/path/to/clawc" }
+    "achuk": {
+      "command": "/abs/path/to/achuk-mcp",
+      "args": ["--db", "achuk.cdb"],
+      "env": { "ACHUK_CLAWC": "/abs/path/to/achukc" }
     }
   }
 }
@@ -76,10 +76,10 @@ Or per-project `.mcp.json`:
 ```json
 {
   "mcpServers": {
-    "claw": {
-      "command": "/abs/path/to/claw-mcp",
-      "args": ["--db", "/abs/path/to/claw.cdb"],
-      "env": { "CLAW_CLAWC": "/abs/path/to/clawc" }
+    "achuk": {
+      "command": "/abs/path/to/achuk-mcp",
+      "args": ["--db", "/abs/path/to/achuk.cdb"],
+      "env": { "ACHUK_CLAWC": "/abs/path/to/achukc" }
     }
   }
 }
@@ -92,10 +92,10 @@ Or per-project `.mcp.json`:
 ```json
 {
   "mcpServers": {
-    "claw": {
-      "command": "/abs/path/to/claw-mcp",
-      "args": ["--db", "claw.cdb"],
-      "env": { "CLAW_CLAWC": "/abs/path/to/clawc" }
+    "achuk": {
+      "command": "/abs/path/to/achuk-mcp",
+      "args": ["--db", "achuk.cdb"],
+      "env": { "ACHUK_CLAWC": "/abs/path/to/achukc" }
     }
   }
 }
@@ -108,9 +108,9 @@ Or per-project `.mcp.json`:
 ```json
 {
   "mcpServers": {
-    "claw": {
-      "command": "/abs/path/to/claw-mcp",
-      "args": ["--db", "/abs/path/to/claw.cdb"]
+    "achuk": {
+      "command": "/abs/path/to/achuk-mcp",
+      "args": ["--db", "/abs/path/to/achuk.cdb"]
     }
   }
 }
@@ -123,10 +123,10 @@ Or per-project `.mcp.json`:
 ```json
 {
   "servers": {
-    "claw": {
+    "achuk": {
       "type": "stdio",
-      "command": "/abs/path/to/claw-mcp",
-      "args": ["--db", "claw.cdb"]
+      "command": "/abs/path/to/achuk-mcp",
+      "args": ["--db", "achuk.cdb"]
     }
   }
 }
@@ -139,10 +139,10 @@ Or per-project `.mcp.json`:
 ```json
 {
   "context_servers": {
-    "claw": {
+    "achuk": {
       "source": "custom",
-      "command": "/abs/path/to/claw-mcp",
-      "args": ["--db", "/abs/path/to/claw.cdb"]
+      "command": "/abs/path/to/achuk-mcp",
+      "args": ["--db", "/abs/path/to/achuk.cdb"]
     }
   }
 }
@@ -155,9 +155,9 @@ Or per-project `.mcp.json`:
 ```json
 {
   "mcpServers": {
-    "claw": {
-      "command": "/abs/path/to/claw-mcp",
-      "args": ["--db", "/abs/path/to/claw.cdb"]
+    "achuk": {
+      "command": "/abs/path/to/achuk-mcp",
+      "args": ["--db", "/abs/path/to/achuk.cdb"]
     }
   }
 }
@@ -168,27 +168,27 @@ Or per-project `.mcp.json`:
 `~/.codex/config.toml`:
 
 ```toml
-[mcp_servers.claw]
-command = "/abs/path/to/claw-mcp"
-args = ["--db", "/abs/path/to/claw.cdb"]
+[mcp_servers.achuk]
+command = "/abs/path/to/achuk-mcp"
+args = ["--db", "/abs/path/to/achuk.cdb"]
 
-[mcp_servers.claw.env]
-CLAW_CLAWC = "/abs/path/to/clawc"
+[mcp_servers.achuk.env]
+ACHUK_CLAWC = "/abs/path/to/achukc"
 ```
 
 ## Cline / Continue / anything else
 
 Any MCP client that can spawn a stdio server works with the same three
-fields: command `claw-mcp`, args `["--db", "<path>"]`, optional env
-`CLAW_CLAWC`. There is no HTTP transport yet — file an issue if you need
+fields: command `achuk-mcp`, args `["--db", "<path>"]`, optional env
+`ACHUK_CLAWC`. There is no HTTP transport yet — file an issue if you need
 one.
 
 ## Smoke test
 
 ```sh
-printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | claw-mcp --db claw.cdb
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | achuk-mcp --db achuk.cdb
 ```
 
 should list the five tools. In your client, ask the agent: *"use
-claw_symbols to list what exists, then claw_check this definition"* — if
+achuk_symbols to list what exists, then achuk_check this definition"* — if
 both round-trip, the loop is closed.

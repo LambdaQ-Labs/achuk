@@ -14,9 +14,9 @@
   ],
   "grade": {
     "compile": true,
-    "tests": ["tests/audited_transfer_spec.claw"],
+    "tests": ["tests/audited_transfer_spec.achuk"],
     "contracts": [],
     "forbidden": ["hallucinated-symbol", "deprecated-symbol"]
   },
-  "reference": "solutions/effect-002.claw"
+  "reference": "solutions/effect-002.achuk"
 }

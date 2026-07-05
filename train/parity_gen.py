@@ -1,28 +1,28 @@
 #!/usr/bin/env python3
 """Generate the parity-eval completions on a GPU pod.
 
-Same 0.5B checkpoint both ways: the TUNED adapter writes Claw (Def-JSON,
+Same 0.5B checkpoint both ways: the TUNED adapter writes Achuk (Def-JSON,
 A1 prompt), the STOCK base writes Python / JavaScript / Go / Rust for the
 same tasks. Downstream, parity_grade.py executes everything against the
 same generated test cases — functional Pass@1, apples to apples.
 
-    python parity_gen.py     # expects ./claw-lora, ../bench/tasks-*
+    python parity_gen.py     # expects ./achuk-lora, ../bench/tasks-*
 """
 import glob, json, os, re, torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 
-BASE = os.environ.get("CLAW_BASE_MODEL", "Qwen/Qwen2.5-Coder-0.5B-Instruct")
-BS = int(os.environ.get("CLAW_BS", "24"))
+BASE = os.environ.get("ACHUK_BASE_MODEL", "Qwen/Qwen2.5-Coder-0.5B-Instruct")
+BS = int(os.environ.get("ACHUK_BS", "24"))
 PROTO = open("train.py").read().split('PROTOCOL = """')[1].split('"""')[0]
 
 tok = AutoTokenizer.from_pretrained(BASE, padding_side="left")
 if tok.pad_token is None:
     tok.pad_token = tok.eos_token
 m = AutoModelForCausalLM.from_pretrained(BASE, torch_dtype=torch.bfloat16, device_map="auto")
-m = PeftModel.from_pretrained(m, "claw-lora")
+m = PeftModel.from_pretrained(m, "achuk-lora")
 
-# Nat.* semantics for the non-Claw arms — the same information the Claw
+# Nat.* semantics for the non-Achuk arms — the same information the Achuk
 # arm gets from its scope list, phrased for a general-purpose language.
 GLOSSARY = ("Here Nat means a non-negative integer. Nat.add(a,b)=a+b, "
             "Nat.mul(a,b)=a*b, Nat.max(a,b)=max, Nat.min(a,b)=min, "
@@ -62,16 +62,16 @@ for f in files:
         tasks.append((f, t))
 print(f"parity tasks: {len(tasks)}")
 
-# --- Claw arm (tuned adapter, A1 prompt) -----------------------------------
-claw_prompts = []
+# --- Achuk arm (tuned adapter, A1 prompt) -----------------------------------
+achuk_prompts = []
 for f, t in tasks:
     scope = [(s["name"], s["ty"], s.get("effects", [])) for s in t.get("scope", [])]
     scopeln = "\n".join(f"  {n} : {ty}" + (f"  [effects: {', '.join(e)}]" if e else "")
                         for n, ty, e in scope)
-    claw_prompts.append(f"Task: {t['prompt']}\n\nIn-scope symbols (the ONLY callable "
+    achuk_prompts.append(f"Task: {t['prompt']}\n\nIn-scope symbols (the ONLY callable "
                         f"definitions):\n{scopeln}\n\n{PROTO}")
-outs = gen_batch(claw_prompts, "claw-tuned")
-with open("parity-claw.jsonl", "w") as fh:
+outs = gen_batch(achuk_prompts, "achuk-tuned")
+with open("parity-achuk.jsonl", "w") as fh:
     for (f, _), raw in zip(tasks, outs):
         try:
             defs = json.loads(raw.strip().strip('`').replace('json', '', 1).strip())

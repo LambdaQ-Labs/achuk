@@ -1,7 +1,7 @@
 {
   "id": "gen-add5-v1",
   "category": "contract",
-  "prompt": "In Claw, define `add5` (parameter p0 = x) : Nat -> Nat applying `Nat.add` to x and the constant 5.",
+  "prompt": "In Achuk, define `add5` (parameter p0 = x) : Nat -> Nat applying `Nat.add` to x and the constant 5.",
   "scope": [
     {
       "name": "Nat.add",

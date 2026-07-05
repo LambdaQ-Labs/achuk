@@ -13,6 +13,6 @@
     { "name": "Bool.if", "ty": "Bool, a, a -> a" },
     { "name": "Str.toIntUnsafe", "ty": "Str -> Nat", "deprecated": true }
   ],
-  "grade": { "compile": true, "tests": ["tests/parse_port_spec.claw"], "contracts": ["ok(result) => result >= 1", "ok(result) => result <= 65535"], "forbidden": ["hallucinated-symbol", "deprecated-symbol"] },
-  "reference": "solutions/repo-feature-008.claw"
+  "grade": { "compile": true, "tests": ["tests/parse_port_spec.achuk"], "contracts": ["ok(result) => result >= 1", "ok(result) => result <= 65535"], "forbidden": ["hallucinated-symbol", "deprecated-symbol"] },
+  "reference": "solutions/repo-feature-008.achuk"
 }

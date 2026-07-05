@@ -1,8 +1,8 @@
-# Claw — P2 Deep Spec: Code-as-Database + Generation-Constraint Server
+# Achuk — P2 Deep Spec: Code-as-Database + Generation-Constraint Server
 
 *The make-or-break phase. This is where the thesis lives and where the engineering risk is highest. If P2's gate fails, the project stops here — so this spec is written to be measured, not just built.*
 
-**Org:** LambdaQ Labs · **Lang:** Claw · Fork base: Roc
+**Org:** LambdaQ Labs · **Lang:** Achuk · Fork base: Roc
 
 ---
 
@@ -31,7 +31,7 @@ Source is **not text files**. It's a content-addressed store of definitions (Uni
 ```
 Definition
   hash        : blake3(normalized_ast)      # content address, stable identity
-  ast         : ClawAST                      # the normalized syntax tree
+  ast         : AchukAST                      # the normalized syntax tree
   type        : TypeScheme                   # inferred, stored
   effects     : EffectRow                    # inferred effect signature
   contract    : Contract?                    # pre/post/invariant (P3; nullable now)
@@ -76,15 +76,15 @@ remove(name)      -> ()
 
 Agent workflow: fetch `type_at` + `candidates` → generate a single definition → `put` → CDB re-infers → structured errors (WS-D) if it doesn't check → retry. No file touched. No repo re-scanned.
 
-### 1.6 `claw db` CLI
+### 1.6 `achuk db` CLI
 
 ```
-claw db symbols <scope>
-claw db type-at <file:pos> | <hash:span>
-claw db candidates <type> <scope>
-claw db callers <name|hash>
-claw db search "<sig>"
-claw db render <name|hash>
+achuk db symbols <scope>
+achuk db type-at <file:pos> | <hash:span>
+achuk db candidates <type> <scope>
+achuk db callers <name|hash>
+achuk db search "<sig>"
+achuk db render <name|hash>
 ```
 
 ---
@@ -103,7 +103,7 @@ model decode step
 Constraint Server
    ├─ parse partial program → find the "hole" (cursor) and its TypeExpectation (via CDB.type_at)
    ├─ compute the set of legal continuations:
-   │     · syntactic:  grammar automaton (what tokens the Claw grammar allows here)
+   │     · syntactic:  grammar automaton (what tokens the Achuk grammar allows here)
    │     · typed:      CDB.candidates(expected_type, scope)  → only real, in-scope, type-fitting symbols
    │     · non-deprecated: filter metadata.deprecated
    │     · (P3) contract-valid: drop symbols whose precondition can't hold in scope
@@ -161,7 +161,7 @@ Result: API hallucination structurally impossible (C+B), repo context is a query
 
 ## 4. P2 Benchmark & Gate
 
-- **Task set (from P0):** ~200 repo-level Claw tasks (translate C/Rust/Py→Claw + from-scratch with real cross-file deps), auto-graded by `claw check` + tests.
+- **Task set (from P0):** ~200 repo-level Achuk tasks (translate C/Rust/Py→Achuk + from-scratch with real cross-file deps), auto-graded by `achuk check` + tests.
 - **Arms:**
   1. stock model, no CDB, no CS (baseline)
   2. + CDB context in prompt (no mask)
@@ -173,7 +173,7 @@ Result: API hallucination structurally impossible (C+B), repo context is a query
 
 ## 5. Build order within P2
 1. CDB data model + SQLite store + `put`/`type_at`/`candidates` (B minimal).
-2. Grammar automaton for Claw (syntactic mask) — get *any* masking working.
+2. Grammar automaton for Achuk (syntactic mask) — get *any* masking working.
 3. Typed mask via `candidates` — the real lever.
 4. Wire one open model (vLLM) through the CS as a logits processor.
 5. Run the 3-arm benchmark. Read the gate.

@@ -8,6 +8,6 @@
     { "name": "Task.andThen", "ty": "Task a, (a -> Task b) -> Task b" },
     { "name": "Task.ok", "ty": "a -> Task a" }
   ],
-  "grade": { "compile": true, "tests": ["tests/save_load_spec.claw"], "contracts": [], "forbidden": ["hallucinated-symbol"] },
-  "reference": "solutions/effect-003.claw"
+  "grade": { "compile": true, "tests": ["tests/save_load_spec.achuk"], "contracts": [], "forbidden": ["hallucinated-symbol"] },
+  "reference": "solutions/effect-003.achuk"
 }

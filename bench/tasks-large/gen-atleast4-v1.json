@@ -1,7 +1,7 @@
 {
   "id": "gen-atleast4-v1",
   "category": "contract",
-  "prompt": "In Claw, define `atleast4` (parameter p0 = x) : Nat -> Nat applying `Nat.max` to x and the constant 4.",
+  "prompt": "In Achuk, define `atleast4` (parameter p0 = x) : Nat -> Nat applying `Nat.max` to x and the constant 4.",
   "scope": [
     {
       "name": "Nat.max",

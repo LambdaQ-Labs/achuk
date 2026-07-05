@@ -1,20 +1,20 @@
-//! `claw ai` — the bundled model, wired to the guardrails.
+//! `achuk ai` — the bundled model, wired to the guardrails.
 //!
 //! One command closes the whole loop the language exists for:
 //!
 //! ```text
-//! claw ai gen "define double : Nat -> Nat"
+//! achuk ai gen "define double : Nat -> Nat"
 //!   → prompt = task + the CDB's real symbols + the output protocol
 //!   → generation is CONSTRAINED by the scope's GBNF grammar
 //!   → the result is typechecked by the real compiler before you see it
 //! ```
 //!
-//! The inference runtime is a bundled llama.cpp server (`claw-infer`) and
-//! a quantized model (`model/claw-0.5b-q8.gguf`), both shipped in the same
+//! The inference runtime is a bundled llama.cpp server (`achuk-infer`) and
+//! a quantized model (`model/achuk-0.5b-q8.gguf`), both shipped in the same
 //! tarball as the compiler — no separate downloads, no configuration.
-//! `claw ai gen` starts the server on demand and leaves it warm.
+//! `achuk ai gen` starts the server on demand and leaves it warm.
 
-use claw_cdb::Cdb;
+use achuk_cdb::Cdb;
 use std::path::{Path, PathBuf};
 
 const PORT: u16 = 8873;
@@ -54,12 +54,12 @@ fn find_resource(env: &str, rel: &[&str], what: &str) -> anyhow::Result<PathBuf>
 }
 
 fn model_path() -> anyhow::Result<PathBuf> {
-    find_resource("CLAW_MODEL_PATH", &["model", "claw-0.5b-q8.gguf"], "the bundled model")
+    find_resource("ACHUK_MODEL_PATH", &["model", "achuk-0.5b-q8.gguf"], "the bundled model")
 }
 
 fn infer_path() -> anyhow::Result<PathBuf> {
-    let bin = if cfg!(windows) { "claw-infer.exe" } else { "claw-infer" };
-    find_resource("CLAW_INFER_PATH", &["bin", bin], "the inference server")
+    let bin = if cfg!(windows) { "achuk-infer.exe" } else { "achuk-infer" };
+    find_resource("ACHUK_INFER_PATH", &["bin", bin], "the inference server")
 }
 
 fn server_up() -> bool {
@@ -108,9 +108,9 @@ fn scope_lines(cdb: &Cdb) -> anyhow::Result<String> {
     Ok(out.join("\n"))
 }
 
-/// `claw ai gen "<task>"` — generate, constrained and verified.
+/// `achuk ai gen "<task>"` — generate, constrained and verified.
 fn gen(cdb: &Cdb, task: &str, unconstrained: bool) -> anyhow::Result<()> {
-    use claw_constraint::{legal_continuations, HoleContext};
+    use achuk_constraint::{legal_continuations, HoleContext};
 
     ensure_server()?;
 
@@ -127,7 +127,7 @@ fn gen(cdb: &Cdb, task: &str, unconstrained: bool) -> anyhow::Result<()> {
     if !unconstrained {
         let hole = HoleContext {
             editing: None,
-            expected: claw_core::Type::Var("any".into()),
+            expected: achuk_core::Type::Var("any".into()),
         };
         let mask = legal_continuations(cdb, &hole)?;
         body["grammar"] = serde_json::Value::String(mask.to_gbnf());
@@ -142,7 +142,7 @@ fn gen(cdb: &Cdb, task: &str, unconstrained: bool) -> anyhow::Result<()> {
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("no completion in the server response"))?;
 
-    let defs: Vec<claw_bench_grader::ProducedDef> =
+    let defs: Vec<achuk_bench_grader::ProducedDef> =
         serde_json::from_str(raw.trim().trim_matches('`'))
             .map_err(|e| anyhow::anyhow!("model output was not Def-JSON: {e}\n{raw}"))?;
 
@@ -150,7 +150,7 @@ fn gen(cdb: &Cdb, task: &str, unconstrained: bool) -> anyhow::Result<()> {
     println!("── generated ──");
     for (i, d) in defs.iter().enumerate() {
         let name = d.name.clone().unwrap_or_else(|| format!("def{i}"));
-        println!("{}", claw_core::render::render_def(&name, &d.def));
+        println!("{}", achuk_core::render::render_def(&name, &d.def));
     }
 
     // Verify with the real compiler: every CDB symbol in scope as a stub.
@@ -159,8 +159,8 @@ fn gen(cdb: &Cdb, task: &str, unconstrained: bool) -> anyhow::Result<()> {
         let d = cdb.get(&h)?;
         scope_pairs.push((n, d.ty));
     }
-    let module = claw_bench_grader::realc::to_module(&scope_pairs, &defs);
-    match claw_bench_grader::realc::clawc_check(&module) {
+    let module = achuk_bench_grader::realc::to_module(&scope_pairs, &defs);
+    match achuk_bench_grader::realc::clawc_check(&module) {
         Ok(r) if r.compiled => println!("── verified ── real compiler: OK"),
         Ok(r) => {
             println!("── REJECTED ── real compiler found {} error(s):\n{}", r.errors, r.detail);
@@ -169,7 +169,7 @@ fn gen(cdb: &Cdb, task: &str, unconstrained: bool) -> anyhow::Result<()> {
         Err(e) => println!("── unverified ── compiler unavailable ({e})"),
     }
 
-    claw_telemetry::event(
+    achuk_telemetry::event(
         "ai_gen",
         serde_json::json!({"constrained": !unconstrained, "defs": defs.len()}),
         Some(serde_json::json!({"task": task, "raw": raw})),
@@ -189,7 +189,7 @@ pub fn ai_cmd(db_path: &Path, args: &[String]) -> anyhow::Result<()> {
                 Ok(p) => println!("server: {}", p.display()),
                 Err(e) => println!("server: missing — {e}"),
             }
-            println!("state:  {}", if server_up() { format!("running on :{PORT}") } else { "not running (starts on first `claw ai gen`)".into() });
+            println!("state:  {}", if server_up() { format!("running on :{PORT}") } else { "not running (starts on first `achuk ai gen`)".into() });
             Ok(())
         }
         Some("serve") => {
@@ -202,7 +202,7 @@ pub fn ai_cmd(db_path: &Path, args: &[String]) -> anyhow::Result<()> {
             #[cfg(unix)]
             {
                 let _ = std::process::Command::new("pkill")
-                    .args(["-f", "claw-infer"])
+                    .args(["-f", "achuk-infer"])
                     .status();
             }
             println!("stopped (if it was running)");
@@ -210,17 +210,17 @@ pub fn ai_cmd(db_path: &Path, args: &[String]) -> anyhow::Result<()> {
         }
         Some("gen") => {
             let task = args.get(1).ok_or_else(|| {
-                anyhow::anyhow!("usage: claw ai gen \"<what to define>\" [--unconstrained]")
+                anyhow::anyhow!("usage: achuk ai gen \"<what to define>\" [--unconstrained]")
             })?;
             let cdb = Cdb::open(db_path)?;
             gen(&cdb, task, args.iter().any(|a| a == "--unconstrained"))
         }
         _ => {
-            println!("claw ai — the bundled model, wired to the guardrails\n");
-            println!("  claw ai gen \"<task>\"   generate a definition (grammar-constrained, compiler-verified)");
-            println!("  claw ai serve           start the model server (gen does this automatically)");
-            println!("  claw ai status          where the model and server are");
-            println!("  claw ai stop            stop the model server");
+            println!("achuk ai — the bundled model, wired to the guardrails\n");
+            println!("  achuk ai gen \"<task>\"   generate a definition (grammar-constrained, compiler-verified)");
+            println!("  achuk ai serve           start the model server (gen does this automatically)");
+            println!("  achuk ai status          where the model and server are");
+            println!("  achuk ai stop            stop the model server");
             Ok(())
         }
     }

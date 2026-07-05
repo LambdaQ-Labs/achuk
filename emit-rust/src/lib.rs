@@ -1,18 +1,18 @@
-//! claw-emit-rust — transpile Claw definitions to Rust source (WS-G).
+//! achuk-emit-rust — transpile Achuk definitions to Rust source (WS-G).
 //!
-//! The ecosystem-inheritance backend: any Claw module can be emitted as
-//! ordinary Rust, so the outside world consumes Claw as a normal Rust
-//! dependency (and Claw reaches every crate on crates.io). This avoids the
+//! The ecosystem-inheritance backend: any Achuk module can be emitted as
+//! ordinary Rust, so the outside world consumes Achuk as a normal Rust
+//! dependency (and Achuk reaches every crate on crates.io). This avoids the
 //! isolation death that killed prior "clean-slate" languages.
 //!
-//! Prototype scope: lowers the claw-core Expr/Type/Def surface (lambdas,
+//! Prototype scope: lowers the achuk-core Expr/Type/Def surface (lambdas,
 //! application, literals, references, function types) to Rust. `extern`
-//! FFI declarations map a Claw name to a real Rust path. Not every Claw
+//! FFI declarations map a Achuk name to a real Rust path. Not every Achuk
 //! construct lowers yet; unsupported forms are a loud error, never silent.
 //!
 //! Spec: docs/syntax.md §6, master-plan WS-G.
 
-use claw_core::{Expr, Lit, Type};
+use achuk_core::{Expr, Lit, Type};
 use std::collections::BTreeMap;
 
 #[derive(Debug, PartialEq)]
@@ -28,11 +28,11 @@ impl std::fmt::Display for EmitError {
     }
 }
 
-/// Maps Claw symbol names to the Rust path they lower to. `Nat.add` →
+/// Maps Achuk symbol names to the Rust path they lower to. `Nat.add` →
 /// `nat_add`, or an FFI target like `sha256` → `sha2::Sha256::digest`.
 pub type NameMap = BTreeMap<String, String>;
 
-/// Lower a Claw type to a Rust type string. Type variables become generic
+/// Lower a Achuk type to a Rust type string. Type variables become generic
 /// params (handled by the caller); here `Var` lowers to its name.
 pub fn emit_type(t: &Type) -> String {
     match t {
@@ -119,7 +119,7 @@ pub fn emit_expr(e: &Expr, names: &NameMap) -> Result<String, EmitError> {
 // escaped by appending `_`, not `r#`.
 const NON_RAW: &[&str] = &["self", "crate", "super", "Self"];
 
-// The full Rust keyword set (2015 + 2018 + reserved). A Claw ident equal to
+// The full Rust keyword set (2015 + 2018 + reserved). A Achuk ident equal to
 // any of these must be escaped or the emitted Rust won't compile.
 const KEYWORDS: &[&str] = &[
     "as", "break", "const", "continue", "crate", "dyn", "else", "enum", "extern", "false", "fn",
@@ -129,7 +129,7 @@ const KEYWORDS: &[&str] = &[
     "override", "priv", "typeof", "unsized", "virtual", "yield", "try",
 ];
 
-/// Escape a Claw identifier so it is a valid Rust identifier: dots → `_`,
+/// Escape a Achuk identifier so it is a valid Rust identifier: dots → `_`,
 /// keywords → `r#kw` (or `kw_` for the four that can't be raw).
 fn sanitize_ident(v: &str) -> String {
     let base = v.replace('.', "_");
@@ -145,7 +145,7 @@ fn sanitize_ident(v: &str) -> String {
 /// Emit a whole definition as a Rust item. A function-typed def whose body
 /// is a lambda becomes a `pub fn`; anything else becomes a `pub const`.
 /// Generic type variables in the signature become `<A, B, …>` params.
-pub fn emit_fn(name: &str, def: &claw_core::Def, names: &NameMap) -> Result<String, EmitError> {
+pub fn emit_fn(name: &str, def: &achuk_core::Def, names: &NameMap) -> Result<String, EmitError> {
     let rname = name.replace('.', "_");
     match (&def.ty, &def.expr) {
         (Type::Fn(param_tys, ret), Expr::Lam { params, body })
@@ -213,7 +213,7 @@ fn walk_generics(t: &Type, out: &mut Vec<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use claw_core::Def;
+    use achuk_core::Def;
 
     fn named(n: &str) -> Type {
         Type::Named(n.into())
@@ -297,7 +297,7 @@ mod tests {
     #[test]
     fn unresolved_ref_is_a_loud_error() {
         let e = Expr::App {
-            func: Box::new(Expr::Ref(claw_core::Hash("deadbeef".into()))),
+            func: Box::new(Expr::Ref(achuk_core::Hash("deadbeef".into()))),
             args: vec![],
         };
         assert!(matches!(

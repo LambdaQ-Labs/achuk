@@ -1,6 +1,0 @@
-# Reading command-line arguments. `main!` receives them as a List Str.
-# Run: claw run args.claw
-main! = |args| {
-    echo!("got ${args.len().to_str()} arg(s)")
-    Ok({})
-}

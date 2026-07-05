@@ -1,7 +1,7 @@
-# Claw ⟵ Roc: inheritance audit
+# Achuk ⟵ Roc: inheritance audit
 
-Claw is a fork of the Roc compiler (Zig). This is the honest map of **what
-Claw gets for free from Roc**, **what Claw adds** (the AI-first value),
+Achuk is a fork of the Roc compiler (Zig). This is the honest map of **what
+Achuk gets for free from Roc**, **what Achuk adds** (the AI-first value),
 **what still leaks the `roc` brand**, and **where we duplicated something the
 compiler already had**. Kept current as the project evolves.
 
@@ -20,43 +20,43 @@ compiler already had**. Kept current as the project evolves.
 The **package registry + `publish`/`add`** are built *on top* of Roc's
 bundle+URL machinery — additive, not reinvented.
 
-## 2. Claw-original (none of this is Roc — the reason Claw exists)
+## 2. Achuk-original (none of this is Roc — the reason Achuk exists)
 
 - **code-as-database** — SQLite store, content-addressed defs, O(1) rename, type-directed `candidates()`
 - **constraint-server / GBNF** — decode-time grammar that makes out-of-scope calls *ungeneratable*
-- **`clawc defs --json`** + **body-lowering** — CIR → serializable AST → the CDB's real **call graph** (`db deps`/`callers`/`eval`/`check`)
+- **`achukc defs --json`** + **body-lowering** — CIR → serializable AST → the CDB's real **call graph** (`db deps`/`callers`/`eval`/`check`)
 - **executable contracts** — predicate language + property-check on real code (`db check`)
 - **structured diagnostics** — JSON + ranked patches
 - **corpus generator + bundled-model training** — the cold-start escape (121/121 = 100% hallucination-free on the reference gate)
 - **benchmark harness** — A0/A1/A2 arms + 5-language parity arms + grader, over `tasks/`, `tasks-holdout/`, and `tasks-large/`
 - **MCP server** — agent grounding over the real symbol table
-- **emit-rust** — Claw → Rust transpiler
-- **package registry service** + `claw publish` / `claw add`
+- **emit-rust** — Achuk → Rust transpiler
+- **package registry service** + `achuk publish` / `achuk add`
 
 ## 3. Rebrand status
 
 **Fixed:**
-- package cache dir `~/.cache/roc` → `~/.cache/claw`; temp dir `{tmp}/roc` → `{tmp}/claw`
-- CLI help/usage `roc <cmd>` → `claw <cmd>`, `ROC_FILE` → `CLAW_FILE`, reporter labels
-- `clawc version` string, README/docs
+- package cache dir `~/.cache/roc` → `~/.cache/achuk`; temp dir `{tmp}/roc` → `{tmp}/achuk`
+- CLI help/usage `roc <cmd>` → `achuk <cmd>`, `ROC_FILE` → `ACHUK_FILE`, reporter labels
+- `achukc version` string, README/docs
 
 **Still leaks `roc` (known, mostly internal):**
-- **Library module files resolve as `.roc`, not `.claw`** — the module loader hardcodes `.roc` across 6+ sites (`compile_package.zig`, `compile_build.zig`, `coordinator.zig`). `.claw` is the app-facing extension; `.roc` the internal one. Same language. Unifying is a real change, deferred.
+- **Library module files resolve as `.roc`, not `.achuk`** — the module loader hardcodes `.roc` across 6+ sites (`compile_package.zig`, `compile_build.zig`, `coordinator.zig`). `.achuk` is the app-facing extension; `.roc` the internal one. Same language. Unifying is a real change, deferred.
 - Host/ABI symbols: `roc_main`, `roc_builtins`, `.roc_echo_platform`, generated `main.roc` — internal, not user-facing.
-- No Claw platform *ecosystem* — example platform URLs still point at roc-lang.
+- No Achuk platform *ecosystem* — example platform URLs still point at roc-lang.
 - `.tar.br` strings in a few legacy test fixtures (dead text; the code path is `.tar.zst`).
 
 ## 4. Duplication — where we built what the compiler already has
 
 | Doubled | Roc already has | Why | Verdict |
 |---|---|---|---|
-| `claw-core::interp` (Expr interpreter) | Roc's dev-backend interpreter (`clawc <file>`) | run CDB bodies for `db eval`/`check`/contracts without the full compiler | **real double** |
-| `claw-core::Expr` (small AST) | the compiler's CIR | CDB needs a serializable, content-addressable, agent-facing AST | **real double** (body-lowering is the CIR→Expr bridge over it) |
+| `achuk-core::interp` (Expr interpreter) | Roc's dev-backend interpreter (`achukc <file>`) | run CDB bodies for `db eval`/`check`/contracts without the full compiler | **real double** |
+| `achuk-core::Expr` (small AST) | the compiler's CIR | CDB needs a serializable, content-addressable, agent-facing AST | **real double** (body-lowering is the CIR→Expr bridge over it) |
 | `parse_type` (type mini-parser) | full type inference | re-parse type strings for CDB queries | **real double** |
 | `contract::eval::Value` vs `interp::Value` | — | two value types + a converter | minor internal double |
 
 **Not doubles** (correctly additive): `run`/`build`/`check`/`fmt` (thin
-passthrough to `clawc`), `publish`/`add` (Roc has no registry/UX), emit-rust.
+passthrough to `achukc`), `publish`/`add` (Roc has no registry/UX), emit-rust.
 
 ### The architectural smell
 The **interp + toy-AST + type-mini-parser** form a *parallel
@@ -70,7 +70,7 @@ through the actual compiler instead of the toy interp, as the first step.
 ## 5. Genuinely missing (not built)
 
 - Native DB hosts (Postgres, …) — new Zig hosts (libpq/sockets + ABI). Week+ each.
-- Rust-library FFI (call Rust *from* Claw) — host FFI work. (`emit-rust` does the reverse.)
+- Rust-library FFI (call Rust *from* Achuk) — host FFI work. (`emit-rust` does the reverse.)
 - File / stdin I/O as first-class (only via platforms today).
 - Public registry (HTTPS + hosting); private/authed registries (no client auth hook).
 - Bundled model shipped in the tarball; Windows target verification.

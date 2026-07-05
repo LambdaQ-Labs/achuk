@@ -1,13 +1,13 @@
 [package]
-name = "claw-lsp"
+name = "achuk-lsp"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "claw-lsp"
+name = "achuk-lsp"
 path = "src/main.rs"
 
 [dependencies]
-claw-cdb = { path = "../cdb" }
+achuk-cdb = { path = "../cdb" }
 serde_json = { workspace = true }

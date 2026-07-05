@@ -1,30 +1,30 @@
-# Networking in Claw
+# Networking in Achuk
 
-Claw programs do I/O through a **platform** — a host that provides the
-effects (print, sockets, files). The default `claw run` uses a print-only
+Achuk programs do I/O through a **platform** — a host that provides the
+effects (print, sockets, files). The default `achuk run` uses a print-only
 platform, but the toolchain ships richer platforms you can target with an
-explicit app header. This page shows a **real HTTP server written in Claw**,
+explicit app header. This page shows a **real HTTP server written in Achuk**,
 verified end-to-end with `curl`.
 
 > Status: **shipping (macOS arm64 + Linux arm64/x64 musl).** One command
 > scaffolds a networked project:
 >
 > ```sh
-> claw new myapi --platform http
-> cd myapi && claw run     # prints the port, then serves a request
+> achuk new myapi --platform http
+> cd myapi && achuk run     # prints the port, then serves a request
 > ```
 >
 > This copies the bundled HTTP platform into your project and generates the
 > handler below. Prebuilt hosts ship for macOS (arm64) and Linux
 > (arm64/x64 musl). Everything here is real output.
 
-## A Claw HTTP auth gateway
+## A Achuk HTTP auth gateway
 
 The host listens on a loopback socket, hands your `main!` the raw HTTP header
 block, and sends back whatever `U64` you return as the response body. Here is
 a complete auth gateway:
 
-```claw
+```achuk
 app [main!] { pf: platform "./platform/main.roc" }
 
 # valid token -> 200, wrong token -> 403, no token -> 401
@@ -48,7 +48,7 @@ main! = |headers| status_for(headers)
 Run it (the platform prints the port it bound), then hit it:
 
 ```console
-$ clawc app.roc &
+$ achukc app.roc &
 60234
 
 $ curl -s localhost:60234 -H "Content-Length: 0" -H "X-Auth-Token: let-me-in"
@@ -60,7 +60,7 @@ $ curl -s localhost:60234 -H "Content-Length: 0"
 ```
 
 All three verified. The server binds a real TCP socket, accepts a real HTTP
-request, routes on the header content in pure Claw, and returns a proper
+request, routes on the header content in pure Achuk, and returns a proper
 `HTTP/1.1 200 OK` response.
 
 ## Typed header parsing (decoders derived from a record)
@@ -68,7 +68,7 @@ request, routes on the header content in pure Claw, and returns a proper
 The bundled `http-headers` platform goes further: it can derive an HTTP
 header **parser from a record type** at compile time.
 
-```claw
+```achuk
 main! : Str => U64
 main! = |headers| {
     decoded = parse_headers(headers)?        # parser_for() derived from the record
@@ -87,7 +87,7 @@ record, no manual string munging.
 ## What this means for the roadmap
 
 Network I/O is **not** blocked on new language work — the socket/HTTP host is
-bundled as a first-class target (`claw new --platform http`, plus `--platform
+bundled as a first-class target (`achuk new --platform http`, plus `--platform
 cli` for stdin/stdout apps), with prebuilt hosts for macOS arm64 and Linux
 musl. What's left: a Windows host, a TLS/HTTPS story for the HTTP platform,
 and first-class file I/O.

@@ -1,4 +1,4 @@
-//! claw-lsp — a minimal Language Server over the code-as-database.
+//! achuk-lsp — a minimal Language Server over the code-as-database.
 //!
 //! Editor support backed by the CDB: completion offers the real in-scope
 //! symbols (so an author can only pick things that exist, mirroring the
@@ -8,9 +8,9 @@
 //!
 //! Transport: LSP framing (Content-Length headers + JSON-RPC). Requests
 //! handled: initialize, textDocument/completion, textDocument/hover,
-//! shutdown. Store path via --db (default ./claw.cdb).
+//! shutdown. Store path via --db (default ./achuk.cdb).
 
-use claw_cdb::Cdb;
+use achuk_cdb::Cdb;
 use serde_json::{json, Value};
 use std::io::{Read, Write};
 
@@ -20,7 +20,7 @@ fn main() {
         .windows(2)
         .find(|w| w[0] == "--db")
         .map(|w| w[1].clone())
-        .unwrap_or_else(|| "claw.cdb".into());
+        .unwrap_or_else(|| "achuk.cdb".into());
 
     let mut stdin = std::io::stdin().lock();
     let mut stdout = std::io::stdout().lock();
@@ -73,7 +73,7 @@ fn handle(req: &Value, db_path: &str) -> Option<Value> {
                 "hoverProvider": true,
                 "textDocumentSync": 1
             },
-            "serverInfo": { "name": "claw-lsp", "version": env!("CARGO_PKG_VERSION") }
+            "serverInfo": { "name": "achuk-lsp", "version": env!("CARGO_PKG_VERSION") }
         })),
         "initialized" => None,
         "textDocument/completion" => respond(completions(db_path)),

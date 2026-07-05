@@ -1,7 +1,7 @@
 {
   "id": "gen-mul3-v1",
   "category": "contract",
-  "prompt": "In Claw, define `mul3` (parameter p0 = x) : Nat -> Nat applying `Nat.mul` to x and the constant 3.",
+  "prompt": "In Achuk, define `mul3` (parameter p0 = x) : Nat -> Nat applying `Nat.mul` to x and the constant 3.",
   "scope": [
     {
       "name": "Nat.mul",

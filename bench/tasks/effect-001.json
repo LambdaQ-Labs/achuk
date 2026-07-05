@@ -12,9 +12,9 @@
   ],
   "grade": {
     "compile": true,
-    "tests": ["tests/load_config_spec.claw"],
+    "tests": ["tests/load_config_spec.achuk"],
     "contracts": [],
     "forbidden": ["hallucinated-symbol"]
   },
-  "reference": "solutions/effect-001.claw"
+  "reference": "solutions/effect-001.achuk"
 }

@@ -1,7 +1,7 @@
 {
   "id": "gen-mul5-v1",
   "category": "contract",
-  "prompt": "In Claw, define `mul5` (parameter p0 = x) : Nat -> Nat applying `Nat.mul` to x and the constant 5.",
+  "prompt": "In Achuk, define `mul5` (parameter p0 = x) : Nat -> Nat applying `Nat.mul` to x and the constant 5.",
   "scope": [
     {
       "name": "Nat.mul",

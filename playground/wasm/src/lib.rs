@@ -1,8 +1,8 @@
-//! claw-play — the REAL Claw engine, compiled to WebAssembly.
+//! achuk-play — the REAL Achuk engine, compiled to WebAssembly.
 //!
 //! The playground used to ship a hand-written JavaScript mirror of the
-//! type engine; this crate replaces it with the actual claw-core parser,
-//! unifier, and step-bounded interpreter plus the actual claw-constraint
+//! type engine; this crate replaces it with the actual achuk-core parser,
+//! unifier, and step-bounded interpreter plus the actual achuk-constraint
 //! grammar projection — running in the visitor's browser. No servers, no
 //! drift between the demo and the language.
 //!
@@ -10,10 +10,10 @@
 //! candidates re-implements the CDB's freshen+unify query over that
 //! in-memory scope — same semantics, ~20 lines.
 
-use claw_constraint::{gbnf, Continuation};
-use claw_core::interp::{self, Resolver, Value};
-use claw_core::render::render_def;
-use claw_core::{freshen, parse::parse_type, unify, Def, Expr, Hash, Lit};
+use achuk_constraint::{gbnf, Continuation};
+use achuk_core::interp::{self, Resolver, Value};
+use achuk_core::render::render_def;
+use achuk_core::{freshen, parse::parse_type, unify, Def, Expr, Hash, Lit};
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -98,7 +98,7 @@ pub fn candidates(sig: &str) -> Result<String, JsValue> {
 }
 
 /// The decode grammar for the current scope — the actual GBNF projection
-/// llama.cpp consumes, from the actual claw-constraint crate.
+/// llama.cpp consumes, from the actual achuk-constraint crate.
 #[wasm_bindgen]
 pub fn grammar() -> String {
     let conts = SCOPE.with(|s| {
@@ -165,7 +165,7 @@ pub fn check_defs(json: &str) -> Result<String, JsValue> {
     })
 }
 
-/// Render a Def-JSON array as .claw source.
+/// Render a Def-JSON array as .achuk source.
 #[wasm_bindgen]
 pub fn render(json: &str) -> Result<String, JsValue> {
     let defs: Vec<NamedDef> = serde_json::from_str(json).map_err(err)?;

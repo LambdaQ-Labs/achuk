@@ -5196,7 +5196,7 @@ fn addMainExe(
     add_machine_code_shim_test: bool,
 ) ?*Step.Compile {
     const exe = b.addExecutable(.{
-        .name = "clawc", // Claw fork: compiler binary (fronted by the `claw` CLI)
+        .name = "achukc", // Achuk fork: compiler binary (fronted by the `achuk` CLI)
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/cli/main.zig"),
             .target = target,

@@ -1,9 +1,9 @@
 [package]
-name = "claw-effects"
+name = "achuk-effects"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
-claw-core = { path = "../crates/claw-core" }
-claw-cdb = { path = "../cdb" }
+achuk-core = { path = "../crates/achuk-core" }
+achuk-cdb = { path = "../cdb" }

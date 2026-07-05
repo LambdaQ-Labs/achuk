@@ -1,0 +1,6 @@
+# Reading command-line arguments. `main!` receives them as a List Str.
+# Run: achuk run args.achuk
+main! = |args| {
+    echo!("got ${args.len().to_str()} arg(s)")
+    Ok({})
+}

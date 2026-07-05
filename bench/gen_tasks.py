@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Procedurally generate a large set of Claw benchmark tasks.
+"""Procedurally generate a large set of Achuk benchmark tasks.
 
 Emits scalar-arithmetic tasks with EXECUTABLE contracts (so they can
 functionally pass) plus wrapper/compose tasks, into a target dir. Used
@@ -93,7 +93,7 @@ UNARY = [
 ]
 PHRASINGS = [
     "Define `{name}` : Nat -> Nat (parameter p0 named x) that computes {sym} of x and {k}.",
-    "In Claw, define `{name}` (parameter p0 = x) : Nat -> Nat applying `{sym}` to x and the constant {k}.",
+    "In Achuk, define `{name}` (parameter p0 = x) : Nat -> Nat applying `{sym}` to x and the constant {k}.",
     "Write `{name}` : Nat -> Nat using only in-scope `{sym}`; parameter p0 is x, combine it with {k}.",
 ]
 for opname, sym, _desc, ctpl in UNARY:

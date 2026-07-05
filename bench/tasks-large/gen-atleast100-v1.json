@@ -1,7 +1,7 @@
 {
   "id": "gen-atleast100-v1",
   "category": "contract",
-  "prompt": "In Claw, define `atleast100` (parameter p0 = x) : Nat -> Nat applying `Nat.max` to x and the constant 100.",
+  "prompt": "In Achuk, define `atleast100` (parameter p0 = x) : Nat -> Nat applying `Nat.max` to x and the constant 100.",
   "scope": [
     {
       "name": "Nat.max",

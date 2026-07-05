@@ -1,4 +1,4 @@
-//! claw-cdb — the code-as-database (WS-B).
+//! achuk-cdb — the code-as-database (WS-B).
 //!
 //! Source is not text: it is a content-addressed store of definitions.
 //! Identity = blake3 hash of content; names are mutable pointers to hashes,
@@ -12,7 +12,7 @@
 //!
 //! Spec: docs/p2-spec.md §1.
 
-use claw_core::{unify, Def, Hash, Subst, Type};
+use achuk_core::{unify, Def, Hash, Subst, Type};
 use rusqlite::{params, Connection};
 use std::path::Path;
 use thiserror::Error;
@@ -209,7 +209,7 @@ impl Cdb {
             // Freshen the candidate's type vars into a disjoint namespace so
             // a shared var name (`a` in both query and def) can't capture and
             // wrongly reject a legal polymorphic candidate.
-            let cand_ty = claw_core::freshen(&def.ty, "$c.");
+            let cand_ty = achuk_core::freshen(&def.ty, "$c.");
             if let Some(subst) = unify(query, &cand_ty) {
                 out.push(Candidate {
                     name,
@@ -250,7 +250,7 @@ impl Cdb {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use claw_core::{Expr, Lit};
+    use achuk_core::{Expr, Lit};
 
     fn named(n: &str) -> Type {
         Type::Named(n.into())

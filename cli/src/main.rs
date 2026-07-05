@@ -1,24 +1,24 @@
-//! claw — the Claw toolchain CLI (WS-I).
+//! achuk — the Achuk toolchain CLI (WS-I).
 //!
 //! MVP surface: the code-as-database commands (docs/p2-spec.md §1.6).
-//! The compiler subcommands (`claw build`, `claw check`) attach here once
+//! The compiler subcommands (`achuk build`, `achuk check`) attach here once
 //! the vendored compiler is wired up.
 //!
-//!   claw db symbols                          list bound names
-//!   claw db put < def.json                   insert a definition (stdin)
-//!   claw db bind <name> <hash>               point a name at a hash
-//!   claw db resolve <name>                   name -> hash
-//!   claw db candidates "<type sig>"          type-directed symbol query
-//!   claw db callers <name|hash>              who references this
-//!   claw db deps <name|hash>                 what this references
-//!   claw db render <name|hash>               definition as JSON
-//!   claw db mask "<type sig>"                legal continuations + GBNF
+//!   achuk db symbols                          list bound names
+//!   achuk db put < def.json                   insert a definition (stdin)
+//!   achuk db bind <name> <hash>               point a name at a hash
+//!   achuk db resolve <name>                   name -> hash
+//!   achuk db candidates "<type sig>"          type-directed symbol query
+//!   achuk db callers <name|hash>              who references this
+//!   achuk db deps <name|hash>                 what this references
+//!   achuk db render <name|hash>               definition as JSON
+//!   achuk db mask "<type sig>"                legal continuations + GBNF
 //!
-//! Store path: --db <file> (default ./claw.cdb).
+//! Store path: --db <file> (default ./achuk.cdb).
 
-use claw_cdb::Cdb;
-use claw_constraint::{legal_continuations, HoleContext, Mask};
-use claw_core::{parse::parse_type, Def, Hash};
+use achuk_cdb::Cdb;
+use achuk_constraint::{legal_continuations, HoleContext, Mask};
+use achuk_core::{parse::parse_type, Def, Hash};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
@@ -35,7 +35,7 @@ fn real_main() -> anyhow::Result<()> {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
 
     // extract --db <path> anywhere in the argv
-    let mut db_path = PathBuf::from("claw.cdb");
+    let mut db_path = PathBuf::from("achuk.cdb");
     if let Some(i) = args.iter().position(|a| a == "--db") {
         anyhow::ensure!(i + 1 < args.len(), "--db needs a value");
         db_path = PathBuf::from(args.remove(i + 1));
@@ -44,17 +44,17 @@ fn real_main() -> anyhow::Result<()> {
 
     match args.first().map(String::as_str) {
         Some("--version" | "-V" | "version") => {
-            println!("claw {}", env!("CARGO_PKG_VERSION"));
+            println!("achuk {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
         Some("db") => db_cmd(&db_path, &args[1..]),
         // Project model.
         Some("new") => new_cmd(&args[1..]),
         Some("run") => run_cmd(&args[1..]),
-        // Compiler passthrough: `claw check|build|fmt|test|repl <args>` runs
-        // the vendored compiler (clawc). CLAW_COMPILER overrides discovery.
+        // Compiler passthrough: `achuk check|build|fmt|test|repl <args>` runs
+        // the vendored compiler (achukc). ACHUK_COMPILER overrides discovery.
         Some(cmd @ ("check" | "build" | "fmt" | "test" | "repl")) => {
-            let status = std::process::Command::new(find_clawc()?)
+            let status = std::process::Command::new(find_achukc()?)
                 .arg(cmd)
                 .args(&args[1..])
                 .status()?;
@@ -63,16 +63,16 @@ fn real_main() -> anyhow::Result<()> {
         // WS-G: transpile a Def-JSON file (the benchmark protocol) to Rust.
         Some("emit-rust") => emit_rust_cmd(&args[1..]),
         // WS-J: real-compiler compile signal — render Def-JSON + task scope
-        // as a .claw module and run `clawc check` on it. `--batch` grades an
+        // as a .achuk module and run `achukc check` on it. `--batch` grades an
         // outputs.jsonl ({"task": <file>, "defs": [...]} per line).
         Some("defs-check") => defs_check_cmd(&args[1..]),
         // A2 support: print the GBNF grammar for a task's scope (the same
         // projection the bench runner uses to constrain decoding).
         Some("task-grammar") => task_grammar_cmd(&args[1..]),
-        // Anonymous usage metrics (on by default; `claw telemetry off`).
+        // Anonymous usage metrics (on by default; `achuk telemetry off`).
         Some("telemetry") => telemetry_cmd(&args[1..]),
         // Full grade (compile proxy + contract EXECUTION) as JSON — the
-        // Claw side of the cross-language parity harness.
+        // Achuk side of the cross-language parity harness.
         Some("defs-grade") => defs_grade_cmd(&args[1..]),
         // Self-update from GitHub Releases (packaged installs only).
         Some("upgrade") => upgrade_cmd(&args[1..]),
@@ -83,11 +83,11 @@ fn real_main() -> anyhow::Result<()> {
         Some("corpus") if args.get(1).map(String::as_str) == Some("gen") => {
             corpus_gen_cmd(&db_path, args.iter().any(|a| a == "--stdlib"))
         }
-        // Index a whole project's .claw files into the CDB so the AI
+        // Index a whole project's .achuk files into the CDB so the AI
         // guardrail (candidates/mask/MCP) answers over the user's real code.
         Some("index") => index_cmd(&db_path, &args[1..]),
         // Register the MCP server with an agent (Claude Code) so it writes
-        // Claw grounded in the project's real symbols.
+        // Achuk grounded in the project's real symbols.
         Some("mcp") if args.get(1).map(String::as_str) == Some("install") => mcp_install_cmd(),
         // Package manager: publish this package to the registry, or add a
         // dependency from the registry to this project.
@@ -95,14 +95,14 @@ fn real_main() -> anyhow::Result<()> {
         Some("add") => add_cmd(&args[1..]),
         _ => {
             eprintln!(
-                "claw — the Claw toolchain\n\nusage:\n  claw new <name>                              scaffold a new project\n  claw run [file.claw]                         run a program (default: main.claw)\n  claw build|check|fmt|test|repl <file.claw>   compiler passthrough\n  claw [--db <file>] db <subcommand>           code-as-database\n  claw ai gen \"<task>\"                          bundled model: generate → verify\n  claw add <pkg> | claw publish                 packages (registry.clawlang.dev)\n  claw index <dir>                              ingest sources into the CDB\n  claw defs-check|defs-grade <defs> <task>      verify AI-generated code\n  claw task-grammar <task.json>                 decode grammar for a scope\n  claw mcp install                              wire this project into MCP clients\n  claw telemetry [off|on|full|share|clear]      usage-metrics controls\n  claw upgrade [--check]                        self-update\n  claw emit-rust <defs.json>                    transpile Def-JSON → Rust\n  claw [--db <file>] corpus gen [--stdlib]      synthetic SFT corpus → JSONL\n\ndb subcommands:\n  symbols | put | bind <name> <hash> | resolve <name> | ingest <file.claw>\n  candidates \"<type>\" | callers <ref> | deps <ref> | render <ref> | mask \"<type>\""
+                "achuk — the Achuk toolchain\n\nusage:\n  achuk new <name>                              scaffold a new project\n  achuk run [file.achuk]                         run a program (default: main.achuk)\n  achuk build|check|fmt|test|repl <file.achuk>   compiler passthrough\n  achuk [--db <file>] db <subcommand>           code-as-database\n  achuk ai gen \"<task>\"                          bundled model: generate → verify\n  achuk add <pkg> | achuk publish                 packages (registry.achuk.dev)\n  achuk index <dir>                              ingest sources into the CDB\n  achuk defs-check|defs-grade <defs> <task>      verify AI-generated code\n  achuk task-grammar <task.json>                 decode grammar for a scope\n  achuk mcp install                              wire this project into MCP clients\n  achuk telemetry [off|on|full|share|clear]      usage-metrics controls\n  achuk upgrade [--check]                        self-update\n  achuk emit-rust <defs.json>                    transpile Def-JSON → Rust\n  achuk [--db <file>] corpus gen [--stdlib]      synthetic SFT corpus → JSONL\n\ndb subcommands:\n  symbols | put | bind <name> <hash> | resolve <name> | ingest <file.achuk>\n  candidates \"<type>\" | callers <ref> | deps <ref> | render <ref> | mask \"<type>\""
             );
             std::process::exit(2);
         }
     }
 }
 
-/// `claw new <name> [--platform http|cli]` — scaffold a runnable project.
+/// `achuk new <name> [--platform http|cli]` — scaffold a runnable project.
 /// Without --platform, a headerless print-and-compute program. With one, a
 /// project targeting a bundled platform (an HTTP server, or stdin/stdout).
 fn new_cmd(args: &[String]) -> anyhow::Result<()> {
@@ -115,19 +115,19 @@ fn new_cmd(args: &[String]) -> anyhow::Result<()> {
     let name = args
         .iter()
         .find(|a| !a.starts_with("--") && a.as_str() != platform.as_deref().unwrap_or(""))
-        .ok_or_else(|| anyhow::anyhow!("usage: claw new <name> [--platform http|cli]"))?;
+        .ok_or_else(|| anyhow::anyhow!("usage: achuk new <name> [--platform http|cli]"))?;
     let dir = Path::new(name);
     anyhow::ensure!(!dir.exists(), "`{name}` already exists");
     std::fs::create_dir_all(dir)?;
 
     let (entry, source) = match platform.as_deref() {
-        None => ("main.claw", DEFAULT_STARTER.to_string()),
+        None => ("main.achuk", DEFAULT_STARTER.to_string()),
         Some(p) => {
             // Copy the bundled platform into the project, generate an app.
             let src = find_platform(p)?;
             copy_dir(&src, &dir.join("platform"))?;
             (
-                "app.claw",
+                "app.achuk",
                 match p {
                     "http" => HTTP_STARTER.to_string(),
                     "cli" => CLI_STARTER.to_string(),
@@ -139,29 +139,29 @@ fn new_cmd(args: &[String]) -> anyhow::Result<()> {
 
     std::fs::write(dir.join(entry), source)?;
     std::fs::write(
-        dir.join("claw.toml"),
+        dir.join("achuk.toml"),
         format!(
             "[project]\nname = \"{name}\"\nversion = \"0.1.0\"\nentry = \"{entry}\"\nplatform = \"{}\"\n",
             platform.as_deref().unwrap_or("print")
         ),
     )?;
-    std::fs::write(dir.join(".gitignore"), "/claw.cdb\n/dist\n*.o\n")?;
+    std::fs::write(dir.join(".gitignore"), "/achuk.cdb\n/dist\n*.o\n")?;
     std::fs::write(
         dir.join("README.md"),
-        format!("# {name}\n\nA Claw project.\n\n```sh\nclaw run\n```\n"),
+        format!("# {name}\n\nA Achuk project.\n\n```sh\nachuk run\n```\n"),
     )?;
 
     // Best-effort initial index so the AI guardrail works immediately.
-    if let Ok(mut cdb) = Cdb::open(&dir.join("claw.cdb")) {
+    if let Ok(mut cdb) = Cdb::open(&dir.join("achuk.cdb")) {
         let _ = ingest(&mut cdb, &dir.join(entry));
     }
 
     eprintln!("created project `{name}`");
-    eprintln!("  cd {name} && claw run");
+    eprintln!("  cd {name} && achuk run");
     Ok(())
 }
 
-const DEFAULT_STARTER: &str = "# Welcome to Claw. Run with `claw run`.\n\
+const DEFAULT_STARTER: &str = "# Welcome to Achuk. Run with `achuk run`.\n\
     greet = |who| \"Hello, ${who}!\"\n\n\
     main! = |_args| {\n    \
     echo!(greet(\"world\"))\n    \
@@ -170,7 +170,7 @@ const DEFAULT_STARTER: &str = "# Welcome to Claw. Run with `claw run`.\n\
 
 const HTTP_STARTER: &str = "app [main!] { pf: platform \"./platform/main.roc\" }\n\n\
     # An HTTP handler. The host passes the raw request headers; return a U64.\n\
-    # Run `claw run` — it prints the port it bound, then serves a request.\n\
+    # Run `achuk run` — it prints the port it bound, then serves a request.\n\
     main! : Str => U64\n\
     main! = |headers| {\n    \
     if Str.contains(headers, \"X-Auth-Token: let-me-in\") 200\n    \
@@ -182,20 +182,20 @@ const CLI_STARTER: &str = "app [main!] { pf: platform \"./platform/main.roc\" }\
     import pf.Stdout\n\n\
     main! : List(Str) => Try({}, [Exit(I32), ..])\n\
     main! = |_args| {\n    \
-    Stdout.line!(\"Hello from a Claw CLI app!\")\n    \
+    Stdout.line!(\"Hello from a Achuk CLI app!\")\n    \
     Ok({})\n\
     }\n";
 
-/// The project's entry file: an explicit arg, else `claw.toml`'s entry,
-/// else `main.claw`. Searches up from the cwd for `claw.toml`.
+/// The project's entry file: an explicit arg, else `achuk.toml`'s entry,
+/// else `main.achuk`. Searches up from the cwd for `achuk.toml`.
 fn entry_file(args: &[String]) -> PathBuf {
     if let Some(f) = args.first() {
         return PathBuf::from(f);
     }
-    // walk up for claw.toml → use its dir + entry
+    // walk up for achuk.toml → use its dir + entry
     if let Ok(mut dir) = std::env::current_dir() {
         loop {
-            let toml = dir.join("claw.toml");
+            let toml = dir.join("achuk.toml");
             if toml.exists() {
                 let entry = std::fs::read_to_string(&toml)
                     .ok()
@@ -204,7 +204,7 @@ fn entry_file(args: &[String]) -> PathBuf {
                             .find_map(|l| l.trim().strip_prefix("entry ="))
                             .map(|v| v.trim().trim_matches('"').to_string())
                     })
-                    .unwrap_or_else(|| "main.claw".into());
+                    .unwrap_or_else(|| "main.achuk".into());
                 return dir.join(entry);
             }
             if !dir.pop() {
@@ -212,23 +212,23 @@ fn entry_file(args: &[String]) -> PathBuf {
             }
         }
     }
-    PathBuf::from("main.claw")
+    PathBuf::from("main.achuk")
 }
 
-/// `claw run [file]` — run a program via the compiler (default: main.claw).
+/// `achuk run [file]` — run a program via the compiler (default: main.achuk).
 fn run_cmd(args: &[String]) -> anyhow::Result<()> {
     let file = entry_file(args);
     anyhow::ensure!(file.exists(), "no such file: {}", file.display());
-    let status = std::process::Command::new(find_clawc()?)
+    let status = std::process::Command::new(find_achukc()?)
         .arg(&file)
         .status()?;
     std::process::exit(status.code().unwrap_or(1));
 }
 
-/// `claw emit-rust <defs.json>` — read a JSON array of named definitions
+/// `achuk emit-rust <defs.json>` — read a JSON array of named definitions
 /// (the benchmark's Def-JSON protocol) and print a Rust module.
 fn emit_rust_cmd(args: &[String]) -> anyhow::Result<()> {
-    use claw_emit_rust::{emit_fn, NameMap};
+    use achuk_emit_rust::{emit_fn, NameMap};
     use serde::Deserialize;
 
     #[derive(Deserialize)]
@@ -251,7 +251,7 @@ fn emit_rust_cmd(args: &[String]) -> anyhow::Result<()> {
         names.insert(d.def.hash().0, n.replace('.', "_"));
     }
 
-    println!("// generated by `claw emit-rust` — do not edit");
+    println!("// generated by `achuk emit-rust` — do not edit");
     for (i, d) in defs.iter().enumerate() {
         let name = d.name.clone().unwrap_or_else(|| format!("def{i}"));
         match emit_fn(&name, &d.def, &names) {
@@ -262,13 +262,13 @@ fn emit_rust_cmd(args: &[String]) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// `claw defs-check <defs.json> <task.json>` (or `--batch <outputs.jsonl>`)
+/// `achuk defs-check <defs.json> <task.json>` (or `--batch <outputs.jsonl>`)
 /// — the REAL compile signal: render the task's scope as signature-true
-/// crash-stubs plus the produced defs, and run `clawc check` on the module.
+/// crash-stubs plus the produced defs, and run `achukc check` on the module.
 fn defs_check_cmd(args: &[String]) -> anyhow::Result<()> {
-    use claw_bench_grader::{realc, ProducedDef, Task};
-    if std::env::var("CLAW_CLAWC").is_err() {
-        std::env::set_var("CLAW_CLAWC", find_clawc()?);
+    use achuk_bench_grader::{realc, ProducedDef, Task};
+    if std::env::var("ACHUK_CLAWC").is_err() {
+        std::env::set_var("ACHUK_CLAWC", find_achukc()?);
     }
 
     let check_one = |task: &Task, defs: &[ProducedDef]| -> anyhow::Result<realc::RealCheck> {
@@ -313,7 +313,7 @@ fn defs_check_cmd(args: &[String]) -> anyhow::Result<()> {
     let defs: Vec<ProducedDef> = serde_json::from_str(&std::fs::read_to_string(defs_path)?)?;
     let task: Task = serde_json::from_str(&std::fs::read_to_string(task_path)?)?;
     let r = check_one(&task, &defs)?;
-    claw_telemetry::event(
+    achuk_telemetry::event(
         "defs_check",
         serde_json::json!({"compiled": r.compiled, "errors": r.errors, "task": task.id}),
         Some(serde_json::json!({"prompt": task.prompt, "defs": defs})),
@@ -326,21 +326,21 @@ fn defs_check_cmd(args: &[String]) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// `claw upgrade [--check]` — self-update from GitHub Releases.
+/// `achuk upgrade [--check]` — self-update from GitHub Releases.
 ///
 /// Flow: resolve the latest tag via the GitHub API, compare with this
-/// binary's version, download `claw-<tag>-<os>-<arch>.tar.gz`, verify the
+/// binary's version, download `achuk-<tag>-<os>-<arch>.tar.gz`, verify the
 /// `.sha256` sidecar when the release ships one, unpack next to the
 /// current install and swap binaries in place (unix rename semantics).
 /// Refuses to run from a dev checkout (target/…) — use git + cargo there.
 fn upgrade_cmd(args: &[String]) -> anyhow::Result<()> {
-    const REPO: &str = "LambdaQ-Labs/claw";
+    const REPO: &str = "LambdaQ-Labs/achuk";
     let current = env!("CARGO_PKG_VERSION");
 
     let latest: serde_json::Value = match ureq::get(&format!(
         "https://api.github.com/repos/{REPO}/releases/latest"
     ))
-    .set("user-agent", "claw-upgrade")
+    .set("user-agent", "achuk-upgrade")
     .call()
     {
         Ok(r) => r.into_json()?,
@@ -369,11 +369,11 @@ latest:    {latest_v}");
         return Ok(());
     }
     if args.iter().any(|a| a == "--check") {
-        println!("run `claw upgrade` to install {latest_v}");
+        println!("run `achuk upgrade` to install {latest_v}");
         return Ok(());
     }
 
-    // Only self-update a packaged install (…/bin/claw), never a dev build.
+    // Only self-update a packaged install (…/bin/achuk), never a dev build.
     let exe = std::env::current_exe()?;
     let bin_dir = exe
         .parent()
@@ -397,20 +397,20 @@ latest:    {latest_v}");
             other => anyhow::bail!("no prebuilt upgrade for {other}"),
         },
     );
-    let asset = format!("claw-{tag}-{os}-{arch}.tar.gz");
+    let asset = format!("achuk-{tag}-{os}-{arch}.tar.gz");
     let url =
         format!("https://github.com/{REPO}/releases/download/{tag}/{asset}");
     eprintln!("downloading {asset} …");
     let mut buf = Vec::new();
     ureq::get(&url)
-        .set("user-agent", "claw-upgrade")
+        .set("user-agent", "achuk-upgrade")
         .call()?
         .into_reader()
         .read_to_end(&mut buf)?;
 
     // Integrity: the CI publishes a .sha256 sidecar; verify when present.
     match ureq::get(&format!("{url}.sha256"))
-        .set("user-agent", "claw-upgrade")
+        .set("user-agent", "achuk-upgrade")
         .call()
     {
         Ok(resp) => {
@@ -450,11 +450,11 @@ latest:    {latest_v}");
     Ok(())
 }
 
-/// `claw defs-grade <defs.json> <task.json>` — grade produced defs against
+/// `achuk defs-grade <defs.json> <task.json>` — grade produced defs against
 /// a task (hallucination check + executed contracts) and print the
 /// GradeResult as JSON. The parity harness consumes this.
 fn defs_grade_cmd(args: &[String]) -> anyhow::Result<()> {
-    use claw_bench_grader::{grade, ProducedDef, Task};
+    use achuk_bench_grader::{grade, ProducedDef, Task};
     let defs: Vec<ProducedDef> =
         serde_json::from_str(&std::fs::read_to_string(need(args, 0, "defs.json")?)?)?;
     let task: Task = serde_json::from_str(&std::fs::read_to_string(need(args, 1, "task.json")?)?)?;
@@ -464,32 +464,32 @@ fn defs_grade_cmd(args: &[String]) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// `claw telemetry status|share|clear` — the opt-in usage log. Collection
-/// is off unless CLAW_TELEMETRY=metrics|full; `share` uploads gzipped
-/// JSONL to CLAW_TELEMETRY_URL and clears the local log on success.
+/// `achuk telemetry status|share|clear` — the opt-in usage log. Collection
+/// is off unless ACHUK_TELEMETRY=metrics|full; `share` uploads gzipped
+/// JSONL to ACHUK_TELEMETRY_URL and clears the local log on success.
 fn telemetry_cmd(args: &[String]) -> anyhow::Result<()> {
     match args.first().map(String::as_str) {
-        Some("share") => match claw_telemetry::share() {
+        Some("share") => match achuk_telemetry::share() {
             Ok(msg) => println!("{msg}"),
             Err(e) => anyhow::bail!(e),
         },
-        Some("clear") => println!("{}", claw_telemetry::clear()),
+        Some("clear") => println!("{}", achuk_telemetry::clear()),
         Some(l @ ("on" | "off" | "full" | "metrics")) => {
-            match claw_telemetry::set_level(l) {
+            match achuk_telemetry::set_level(l) {
                 Ok(msg) => println!("{msg}"),
                 Err(e) => anyhow::bail!(e),
             }
         }
-        _ => println!("{}", claw_telemetry::status()),
+        _ => println!("{}", achuk_telemetry::status()),
     }
     Ok(())
 }
 
-/// `claw task-grammar <task.json>` — the GBNF grammar constraining
+/// `achuk task-grammar <task.json>` — the GBNF grammar constraining
 /// generation to the task's scope (the bench runner's A2 projection).
 fn task_grammar_cmd(args: &[String]) -> anyhow::Result<()> {
-    use claw_bench_grader::Task;
-    use claw_constraint::{legal_continuations, HoleContext};
+    use achuk_bench_grader::Task;
+    use achuk_constraint::{legal_continuations, HoleContext};
     let task: Task = serde_json::from_str(&std::fs::read_to_string(need(
         args,
         0,
@@ -498,21 +498,21 @@ fn task_grammar_cmd(args: &[String]) -> anyhow::Result<()> {
     let cdb = task.build_scope_cdb()?;
     let hole = HoleContext {
         editing: None,
-        expected: claw_core::Type::Var("any".into()),
+        expected: achuk_core::Type::Var("any".into()),
     };
     let mask = legal_continuations(&cdb, &hole)?;
     println!("{}", mask.to_gbnf());
     Ok(())
 }
 
-/// `claw corpus gen` — emit a synthetic supervised-fine-tuning corpus
+/// `achuk corpus gen` — emit a synthetic supervised-fine-tuning corpus
 /// (JSONL) generated from the CDB's in-scope symbols. The cold-start seed.
 fn corpus_gen_cmd(db_path: &Path, stdlib: bool) -> anyhow::Result<()> {
     let examples = if stdlib {
-        claw_corpus::generate_stdlib()?
+        achuk_corpus::generate_stdlib()?
     } else {
         let cdb = Cdb::open(db_path)?;
-        claw_corpus::generate(&cdb)?
+        achuk_corpus::generate(&cdb)?
     };
     if examples.is_empty() {
         anyhow::bail!(
@@ -520,13 +520,13 @@ fn corpus_gen_cmd(db_path: &Path, stdlib: bool) -> anyhow::Result<()> {
             db_path.display()
         );
     }
-    print!("{}", claw_corpus::to_jsonl(&examples));
+    print!("{}", achuk_corpus::to_jsonl(&examples));
     println!();
     eprintln!("generated {} example(s)", examples.len());
     Ok(())
 }
 
-/// `claw index [dir]` — ingest every `.claw` file under a project into the
+/// `achuk index [dir]` — ingest every `.achuk` file under a project into the
 /// CDB, so `candidates`/`mask`/MCP answer over the user's real symbols.
 /// Rebuilds the store fresh each run (idempotent).
 fn index_cmd(db_path: &Path, args: &[String]) -> anyhow::Result<()> {
@@ -534,12 +534,12 @@ fn index_cmd(db_path: &Path, args: &[String]) -> anyhow::Result<()> {
         .first()
         .map(PathBuf::from)
         .unwrap_or_else(|| project_root().unwrap_or_else(|| PathBuf::from(".")));
-    let files = claw_files(&root);
-    anyhow::ensure!(!files.is_empty(), "no .claw files under {}", root.display());
+    let files = achuk_files(&root);
+    anyhow::ensure!(!files.is_empty(), "no .achuk files under {}", root.display());
 
     // Fresh store each index — but package definitions (installed by
-    // `claw add`, marked by their doc provenance) must SURVIVE a re-index,
-    // or `claw mcp install` would silently unlearn every dependency.
+    // `achuk add`, marked by their doc provenance) must SURVIVE a re-index,
+    // or `achuk mcp install` would silently unlearn every dependency.
     let mut preserved: Vec<(String, Def)> = Vec::new();
     if let Ok(old) = Cdb::open(db_path) {
         for (n, h) in old.symbols().unwrap_or_default() {
@@ -580,15 +580,15 @@ fn index_cmd(db_path: &Path, args: &[String]) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// `claw mcp install` — write a project-scoped `.mcp.json` so Claude Code
-/// (and any MCP client that reads it) auto-connects the Claw server, giving
+/// `achuk mcp install` — write a project-scoped `.mcp.json` so Claude Code
+/// (and any MCP client that reads it) auto-connects the Achuk server, giving
 /// the agent the real-symbol guardrail. Merges into an existing file.
 fn mcp_install_cmd() -> anyhow::Result<()> {
     let root = project_root().unwrap_or_else(|| PathBuf::from("."));
     let cfg_path = root.join(".mcp.json");
-    let mcp_bin = find_tool("claw-mcp")
+    let mcp_bin = find_tool("achuk-mcp")
         .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| "claw-mcp".into());
+        .unwrap_or_else(|_| "achuk-mcp".into());
 
     // Merge into an existing .mcp.json rather than clobber it.
     let mut cfg: serde_json::Value = std::fs::read_to_string(&cfg_path)
@@ -602,26 +602,26 @@ fn mcp_install_cmd() -> anyhow::Result<()> {
     {
         cfg["mcpServers"] = serde_json::json!({});
     }
-    cfg["mcpServers"]["claw"] = serde_json::json!({
+    cfg["mcpServers"]["achuk"] = serde_json::json!({
         "command": mcp_bin,
-        "args": ["--db", "claw.cdb"],
+        "args": ["--db", "achuk.cdb"],
     });
     std::fs::write(&cfg_path, serde_json::to_string_pretty(&cfg)? + "\n")?;
 
     // Make sure the store the server reads actually exists.
     if project_root().is_some() {
         let _ = index_cmd(
-            &root.join("claw.cdb"),
+            &root.join("achuk.cdb"),
             &[root.to_string_lossy().into_owned()],
         );
     }
     eprintln!("wrote {}", cfg_path.display());
-    eprintln!("Claude Code will connect the `claw` MCP server in this project.");
-    eprintln!("Its tools (claw_symbols/claw_candidates/claw_mask) answer over your real code.");
+    eprintln!("Claude Code will connect the `achuk` MCP server in this project.");
+    eprintln!("Its tools (achuk_symbols/achuk_candidates/achuk_mask) answer over your real code.");
     Ok(())
 }
 
-/// Resolve a bundled platform directory by short name. Order: $CLAW_PLATFORMS,
+/// Resolve a bundled platform directory by short name. Order: $ACHUK_PLATFORMS,
 /// then the packaged layout (<bindir>/../platforms/<name>), then the dev
 /// monorepo (compiler/test/<mapped>/platform).
 fn find_platform(name: &str) -> anyhow::Result<PathBuf> {
@@ -631,7 +631,7 @@ fn find_platform(name: &str) -> anyhow::Result<PathBuf> {
         "cli" => "fx-open",
         other => anyhow::bail!("unknown platform `{other}` (try: http, cli)"),
     };
-    if let Ok(root) = std::env::var("CLAW_PLATFORMS") {
+    if let Ok(root) = std::env::var("ACHUK_PLATFORMS") {
         let p = Path::new(&root).join(name);
         if p.exists() {
             return Ok(p);
@@ -654,7 +654,7 @@ fn find_platform(name: &str) -> anyhow::Result<PathBuf> {
             }
         }
     }
-    anyhow::bail!("could not locate the `{name}` platform (set CLAW_PLATFORMS)")
+    anyhow::bail!("could not locate the `{name}` platform (set ACHUK_PLATFORMS)")
 }
 
 /// Recursively copy a directory.
@@ -673,10 +673,10 @@ fn copy_dir(src: &Path, dst: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// `claw db eval --real <name> <args...>` — evaluate a def through the
+/// `achuk db eval --real <name> <args...>` — evaluate a def through the
 /// ACTUAL compiler (Roc's real interpreter), not the built-in one. Locates
 /// the def's source (recorded at ingest), builds a runner that prints
-/// `name(args)`, and runs it with `clawc`. This is the ground-truth
+/// `name(args)`, and runs it with `achukc`. This is the ground-truth
 /// evaluator; the built-in interp is the fast self-contained approximation.
 fn eval_real(cdb: &Cdb, name: &str, call_args: &[String]) -> anyhow::Result<()> {
     // Recover the source file from the def's provenance ("ingested from …").
@@ -716,17 +716,17 @@ fn eval_real(cdb: &Cdb, name: &str, call_args: &[String]) -> anyhow::Result<()> 
     );
 
     let runner = format!(
-        "{trimmed}\n\nmain! = |_claw_eval| {{\n    echo!(Str.inspect({call}))\n    Ok({{}})\n}}\n"
+        "{trimmed}\n\nmain! = |_achuk_eval| {{\n    echo!(Str.inspect({call}))\n    Ok({{}})\n}}\n"
     );
-    let tmp = std::env::temp_dir().join(format!("claw-eval-{}.claw", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("achuk-eval-{}.achuk", std::process::id()));
     std::fs::write(&tmp, runner)?;
 
-    let out = std::process::Command::new(find_clawc()?)
+    let out = std::process::Command::new(find_achukc()?)
         .arg(&tmp)
         .output()?;
     let _ = std::fs::remove_file(&tmp);
     // The program's printed output is the signal — the last non-empty
-    // stdout line. (clawc exits non-zero merely for warnings, so the exit
+    // stdout line. (achukc exits non-zero merely for warnings, so the exit
     // code isn't a reliable success gate; a real compile error yields no
     // program output at all.)
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -752,12 +752,12 @@ fn eval_real(cdb: &Cdb, name: &str, call_args: &[String]) -> anyhow::Result<()> 
     Ok(())
 }
 
-/// The registry base URL: $CLAW_REGISTRY, else the local default.
+/// The registry base URL: $ACHUK_REGISTRY, else the local default.
 fn registry_url() -> String {
-    std::env::var("CLAW_REGISTRY").unwrap_or_else(|_| "https://registry.clawlang.dev".into())
+    std::env::var("ACHUK_REGISTRY").unwrap_or_else(|_| "https://registry.achuk.dev".into())
 }
 
-/// Read a `key = "value"` from claw.toml's [project] section.
+/// Read a `key = "value"` from achuk.toml's [project] section.
 fn toml_value(toml: &str, key: &str) -> Option<String> {
     toml.lines()
         .find_map(|l| l.trim().strip_prefix(key))
@@ -765,29 +765,29 @@ fn toml_value(toml: &str, key: &str) -> Option<String> {
         .map(|v| v.trim().trim_matches('"').to_string())
 }
 
-/// `claw publish [dir]` — bundle this package and upload it to the registry.
+/// `achuk publish [dir]` — bundle this package and upload it to the registry.
 fn publish_cmd(args: &[String]) -> anyhow::Result<()> {
     let root = args
         .first()
         .map(PathBuf::from)
         .unwrap_or_else(|| project_root().unwrap_or_else(|| PathBuf::from(".")));
-    let toml = std::fs::read_to_string(root.join("claw.toml"))
-        .map_err(|_| anyhow::anyhow!("no claw.toml in {}", root.display()))?;
-    let name = toml_value(&toml, "name").ok_or_else(|| anyhow::anyhow!("claw.toml has no name"))?;
+    let toml = std::fs::read_to_string(root.join("achuk.toml"))
+        .map_err(|_| anyhow::anyhow!("no achuk.toml in {}", root.display()))?;
+    let name = toml_value(&toml, "name").ok_or_else(|| anyhow::anyhow!("achuk.toml has no name"))?;
     let version = toml_value(&toml, "version").unwrap_or_else(|| "0.1.0".into());
-    let entry = toml_value(&toml, "entry").unwrap_or_else(|| "main.claw".into());
+    let entry = toml_value(&toml, "entry").unwrap_or_else(|| "main.achuk".into());
 
-    // Bundle: clawc bundle <entry> --output-dir <tmp>. The compiler names
+    // Bundle: achukc bundle <entry> --output-dir <tmp>. The compiler names
     // the output <base58-blake3>.tar.zst (content-addressed).
-    let outdir = std::env::temp_dir().join(format!("claw-pub-{}", std::process::id()));
+    let outdir = std::env::temp_dir().join(format!("achuk-pub-{}", std::process::id()));
     std::fs::create_dir_all(&outdir)?;
-    let status = std::process::Command::new(find_clawc()?)
+    let status = std::process::Command::new(find_achukc()?)
         .arg("bundle")
         .arg(root.join(&entry))
         .arg("--output-dir")
         .arg(&outdir)
         .status()?;
-    anyhow::ensure!(status.success(), "clawc bundle failed");
+    anyhow::ensure!(status.success(), "achukc bundle failed");
     let bundle = std::fs::read_dir(&outdir)?
         .flatten()
         .map(|e| e.path())
@@ -836,8 +836,8 @@ fn publish_cmd(args: &[String]) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// `claw add <name>[@version]` — add a registry dependency to this project:
-/// records it in claw.toml and inserts it into the app header so imports
+/// `achuk add <name>[@version]` — add a registry dependency to this project:
+/// records it in achuk.toml and inserts it into the app header so imports
 /// resolve. The compiler fetches it on the next build/run.
 fn add_cmd(args: &[String]) -> anyhow::Result<()> {
     let spec = need(args, 0, "package name")?;
@@ -870,26 +870,26 @@ fn add_cmd(args: &[String]) -> anyhow::Result<()> {
     };
     anyhow::ensure!(!url.is_empty(), "registry returned no url for {name}");
 
-    // Record in claw.toml [dependencies].
-    let toml_path = root.join("claw.toml");
+    // Record in achuk.toml [dependencies].
+    let toml_path = root.join("achuk.toml");
     let mut toml = std::fs::read_to_string(&toml_path).unwrap_or_default();
     if !toml.contains("[dependencies]") {
         toml.push_str("\n[dependencies]\n");
     }
     // Pull the package's definitions into the project's code database:
-    // from this moment `claw db candidates`, the MCP server, and `claw ai`
+    // from this moment `achuk db candidates`, the MCP server, and `achuk ai`
     // all know the package's names, types, and effects.
     let defs_out = std::process::Command::new("curl")
         .args(["-s", &format!("{reg}/defs/{name}/{version}")])
         .output()?;
     if let Ok(pkg_defs) = serde_json::from_slice::<Vec<serde_json::Value>>(&defs_out.stdout) {
-        let mut cdb = Cdb::open(&root.join("claw.cdb"))?;
+        let mut cdb = Cdb::open(&root.join("achuk.cdb"))?;
         let mut added = 0usize;
         for d in &pkg_defs {
             let (Some(dn), Some(ts)) = (d["name"].as_str(), d["ty"].as_str()) else { continue };
-            let Ok(ty) = claw_core::parse::parse_type(ts) else { continue };
+            let Ok(ty) = achuk_core::parse::parse_type(ts) else { continue };
             let mut def = Def::new(
-                claw_core::Expr::Lit(claw_core::Lit::Str(format!("{name}::{dn}"))),
+                achuk_core::Expr::Lit(achuk_core::Lit::Str(format!("{name}::{dn}"))),
                 ty,
             );
             def.effects = d["effects"].as_array().map(|a| a.iter().filter_map(|e| e.as_str().map(String::from)).collect()).unwrap_or_default();
@@ -926,7 +926,7 @@ fn add_cmd(args: &[String]) -> anyhow::Result<()> {
     std::fs::write(&toml_path, &toml)?;
 
     // Insert the package into the app header so `import {name}.X` resolves.
-    let entry = toml_value(&toml, "entry").unwrap_or_else(|| "main.claw".into());
+    let entry = toml_value(&toml, "entry").unwrap_or_else(|| "main.achuk".into());
     let entry_path = root.join(&entry);
     if let Ok(src) = std::fs::read_to_string(&entry_path) {
         if src.contains("app [") && !src.contains(&format!("{name}:")) {
@@ -940,15 +940,15 @@ fn add_cmd(args: &[String]) -> anyhow::Result<()> {
     }
 
     println!("added {name}@{version}");
-    println!("  import {name}.<Module> to use it — `claw run` fetches it");
+    println!("  import {name}.<Module> to use it — `achuk run` fetches it");
     Ok(())
 }
 
-/// Find the project root (nearest ancestor with `claw.toml`) or None.
+/// Find the project root (nearest ancestor with `achuk.toml`) or None.
 fn project_root() -> Option<PathBuf> {
     let mut dir = std::env::current_dir().ok()?;
     loop {
-        if dir.join("claw.toml").exists() {
+        if dir.join("achuk.toml").exists() {
             return Some(dir);
         }
         if !dir.pop() {
@@ -957,8 +957,8 @@ fn project_root() -> Option<PathBuf> {
     }
 }
 
-/// All `.claw` files under `root` (recursive, skipping hidden/dist dirs).
-fn claw_files(root: &Path) -> Vec<PathBuf> {
+/// All `.achuk` files under `root` (recursive, skipping hidden/dist dirs).
+fn achuk_files(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
@@ -972,7 +972,7 @@ fn claw_files(root: &Path) -> Vec<PathBuf> {
                 if !name.starts_with('.') && name != "dist" && name != "target" {
                     stack.push(p);
                 }
-            } else if p.extension().and_then(|x| x.to_str()) == Some("claw") {
+            } else if p.extension().and_then(|x| x.to_str()) == Some("achuk") {
                 out.push(p);
             }
         }
@@ -981,17 +981,17 @@ fn claw_files(root: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// Locate a vendored compiler tool binary. Order: $CLAW_COMPILER (for
-/// clawc only), then the monorepo default (compiler/zig-out/bin/<tool>
+/// Locate a vendored compiler tool binary. Order: $ACHUK_COMPILER (for
+/// achukc only), then the monorepo default (compiler/zig-out/bin/<tool>
 /// walking up from this binary), then PATH.
 fn find_tool(tool: &str) -> anyhow::Result<PathBuf> {
-    if tool == "clawc" {
-        if let Ok(p) = std::env::var("CLAW_COMPILER") {
+    if tool == "achukc" {
+        if let Ok(p) = std::env::var("ACHUK_COMPILER") {
             return Ok(PathBuf::from(p));
         }
     }
     if let Ok(exe) = std::env::current_exe() {
-        // Packaged install: tools sit next to `claw` (e.g. ~/.claw/bin/clawc).
+        // Packaged install: tools sit next to `achuk` (e.g. ~/.achuk/bin/achukc).
         if let Some(dir) = exe.parent() {
             let sibling = dir.join(tool);
             if sibling.exists() {
@@ -1010,8 +1010,8 @@ fn find_tool(tool: &str) -> anyhow::Result<PathBuf> {
     Ok(PathBuf::from(tool))
 }
 
-fn find_clawc() -> anyhow::Result<PathBuf> {
-    find_tool("clawc")
+fn find_achukc() -> anyhow::Result<PathBuf> {
+    find_tool("achukc")
 }
 
 /// Reverse index hash → bound name, for human-readable graph output.
@@ -1046,23 +1046,23 @@ impl<'a> CdbResolver<'a> {
     }
 }
 
-impl claw_core::interp::Resolver for CdbResolver<'_> {
-    fn resolve(&self, h: &Hash) -> Option<claw_core::Expr> {
+impl achuk_core::interp::Resolver for CdbResolver<'_> {
+    fn resolve(&self, h: &Hash) -> Option<achuk_core::Expr> {
         self.cdb.get(h).ok().map(|d| d.expr)
     }
     fn name_of(&self, h: &Hash) -> Option<String> {
         self.names.get(h).cloned()
     }
-    fn resolve_name(&self, name: &str) -> Option<claw_core::Expr> {
+    fn resolve_name(&self, name: &str) -> Option<achuk_core::Expr> {
         let h = self.cdb.resolve(name).ok()?;
         self.cdb.get(&h).ok().map(|d| d.expr)
     }
 }
 
-/// Parse a `claw db eval` argument: an integer, or a bare Uppercase word as
+/// Parse a `achuk db eval` argument: an integer, or a bare Uppercase word as
 /// a nullary tag (for tag-union inputs like a pipeline `Lead` stage).
-fn parse_eval_arg(a: &str) -> claw_core::Expr {
-    use claw_core::{Expr, Lit};
+fn parse_eval_arg(a: &str) -> achuk_core::Expr {
+    use achuk_core::{Expr, Lit};
     if let Ok(n) = a.parse::<i64>() {
         Expr::Lit(Lit::Int(n))
     } else if a.chars().next().is_some_and(|c| c.is_uppercase()) {
@@ -1073,9 +1073,9 @@ fn parse_eval_arg(a: &str) -> claw_core::Expr {
 }
 
 /// Convert an interpreter value to a contract value (same shape).
-fn to_contract_value(v: &claw_core::interp::Value) -> claw_contract::Value {
-    use claw_contract::Value as C;
-    use claw_core::interp::Value as I;
+fn to_contract_value(v: &achuk_core::interp::Value) -> achuk_contract::Value {
+    use achuk_contract::Value as C;
+    use achuk_core::interp::Value as I;
     match v {
         I::Int(n) => C::Int(*n),
         I::Bool(b) => C::Bool(*b),
@@ -1089,8 +1089,8 @@ fn to_contract_value(v: &claw_core::interp::Value) -> claw_contract::Value {
 }
 
 /// Human-readable rendering of an interpreter value.
-fn fmt_value(v: &claw_core::interp::Value) -> String {
-    use claw_core::interp::Value;
+fn fmt_value(v: &achuk_core::interp::Value) -> String {
+    use achuk_core::interp::Value;
     match v {
         Value::Int(n) => n.to_string(),
         Value::Bool(b) => b.to_string(),
@@ -1174,37 +1174,37 @@ fn db_cmd(db_path: &Path, args: &[String]) -> anyhow::Result<()> {
             let name_or_hash = need(args, 1, "name|hash")?;
             let h = resolve_ref(&cdb, name_or_hash)?;
             let def = cdb.get(&h)?;
-            // `--claw` renders the human-readable .claw projection; default = JSON.
-            if args.iter().any(|a| a == "--claw") {
+            // `--achuk` renders the human-readable .achuk projection; default = JSON.
+            if args.iter().any(|a| a == "--achuk") {
                 let name = cdb
                     .resolve(name_or_hash)
                     .ok()
                     .and(Some(name_or_hash.clone()));
                 println!(
                     "{}",
-                    claw_core::render::render_def(name.as_deref().unwrap_or("_"), &def)
+                    achuk_core::render::render_def(name.as_deref().unwrap_or("_"), &def)
                 );
             } else {
                 println!("{}", serde_json::to_string_pretty(&def)?);
             }
         }
         Some("ingest") => {
-            let file = need(args, 1, "path to .claw file")?;
+            let file = need(args, 1, "path to .achuk file")?;
             let n = ingest(&mut cdb, Path::new(file))?;
             eprintln!("ingested {n} definition(s) from {file}");
         }
         // Property-check a real def: run it on every integer input in a
         // range and verify a postcondition. Contracts, on your actual code.
-        //   claw db check <name> <lo> <hi> "<ensures predicate>"
+        //   achuk db check <name> <lo> <hi> "<ensures predicate>"
         // The predicate may reference `result` and the function's parameter.
         Some("check") => {
-            use claw_core::interp::Resolver as _;
-            use claw_core::{interp, Expr, Lit};
+            use achuk_core::interp::Resolver as _;
+            use achuk_core::{interp, Expr, Lit};
             let name = need(args, 1, "def name")?;
             let lo: i64 = need(args, 2, "lo")?.parse()?;
             let hi: i64 = need(args, 3, "hi")?.parse()?;
             let pred_src = need(args, 4, "ensures predicate")?;
-            let pred = claw_contract::parse_pred(pred_src).map_err(|e| anyhow::anyhow!("{e:?}"))?;
+            let pred = achuk_contract::parse_pred(pred_src).map_err(|e| anyhow::anyhow!("{e:?}"))?;
 
             let res = CdbResolver::new(&cdb);
             let body = res
@@ -1229,11 +1229,11 @@ fn db_cmd(db_path: &Path, args: &[String]) -> anyhow::Result<()> {
                         continue;
                     }
                 };
-                let mut env: std::collections::BTreeMap<String, claw_contract::Value> =
+                let mut env: std::collections::BTreeMap<String, achuk_contract::Value> =
                     std::collections::BTreeMap::new();
                 env.insert(param.clone(), to_contract_value(&interp::Value::Int(x)));
                 env.insert("result".into(), to_contract_value(&result));
-                match claw_contract::eval_pred(&pred, &env) {
+                match achuk_contract::eval_pred(&pred, &env) {
                     Ok(true) => {}
                     Ok(false) => {
                         println!(
@@ -1273,7 +1273,7 @@ fn db_cmd(db_path: &Path, args: &[String]) -> anyhow::Result<()> {
             return eval_real(&cdb, name, &pos[1..]);
         }
         Some("eval") => {
-            use claw_core::{interp, Expr};
+            use achuk_core::{interp, Expr};
             let name = need(args, 1, "def name")?;
             // Each arg: an integer literal, or a bare Uppercase word → a
             // nullary tag (e.g. `Lead`), so tag-union state machines run.
@@ -1302,7 +1302,7 @@ fn db_cmd(db_path: &Path, args: &[String]) -> anyhow::Result<()> {
                         println!("{} : {}", c.name, c.ty);
                     }
                     eprintln!("--- gbnf ---");
-                    eprintln!("{}", claw_constraint::gbnf::def_json_grammar(&list));
+                    eprintln!("{}", achuk_constraint::gbnf::def_json_grammar(&list));
                 }
                 Mask::EmptyWithDiagnostic(d) => {
                     eprintln!("{}", d.render());
@@ -1323,7 +1323,7 @@ fn need<'a>(args: &'a [String], i: usize, what: &str) -> anyhow::Result<&'a Stri
 // ---------------------------------------------------------------------
 // Ingest: compiler -> CDB bridge
 // ---------------------------------------------------------------------
-// Runs `clawc defs --json <file>`, which canonicalizes + typechecks the
+// Runs `achukc defs --json <file>`, which canonicalizes + typechecks the
 // file and emits a JSON array of {name, type, effectful} for each
 // top-level def. Real names + inferred types + effect flag, structured —
 // no fragile markdown scraping. Types the prototype signature parser can't
@@ -1332,7 +1332,7 @@ fn need<'a>(args: &'a [String], i: usize, what: &str) -> anyhow::Result<&'a Stri
 // lands (the AST can now hold them; the compiler->AST lowering is next).
 
 fn ingest(cdb: &mut Cdb, file: &Path) -> anyhow::Result<usize> {
-    use claw_core::{Expr, Lit, Type};
+    use achuk_core::{Expr, Lit, Type};
 
     #[derive(serde::Deserialize)]
     struct DefEntry {
@@ -1347,15 +1347,15 @@ fn ingest(cdb: &mut Cdb, file: &Path) -> anyhow::Result<usize> {
         body: Option<Expr>,
     }
 
-    let clawc = find_clawc()?;
-    let out = std::process::Command::new(&clawc)
+    let achukc = find_achukc()?;
+    let out = std::process::Command::new(&achukc)
         .arg("defs")
         .arg("--json")
         .arg(file)
         .output()?;
     anyhow::ensure!(
         out.status.success(),
-        "clawc defs failed for {}: {}",
+        "achukc defs failed for {}: {}",
         file.display(),
         String::from_utf8_lossy(&out.stderr)
     );
@@ -1370,7 +1370,7 @@ fn ingest(cdb: &mut Cdb, file: &Path) -> anyhow::Result<usize> {
         .unwrap_or("[]")
         .trim();
     let entries: Vec<DefEntry> =
-        serde_json::from_str(json).map_err(|e| anyhow::anyhow!("parsing clawc defs json: {e}"))?;
+        serde_json::from_str(json).map_err(|e| anyhow::anyhow!("parsing achukc defs json: {e}"))?;
     anyhow::ensure!(
         !entries.is_empty(),
         "no top-level definitions found in {}",

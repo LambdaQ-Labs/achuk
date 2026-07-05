@@ -16,9 +16,9 @@
   ],
   "grade": {
     "compile": true,
-    "tests": ["tests/retry_spec.claw"],
+    "tests": ["tests/retry_spec.achuk"],
     "contracts": [],
     "forbidden": ["hallucinated-symbol", "deprecated-symbol"]
   },
-  "reference": "solutions/repo-feature-003.claw"
+  "reference": "solutions/repo-feature-003.achuk"
 }

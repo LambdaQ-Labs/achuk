@@ -10,6 +10,6 @@
     { "name": "List.cons", "ty": "a, List a -> List a" },
     { "name": "List.empty", "ty": "List a" }
   ],
-  "grade": { "compile": true, "tests": ["tests/reverse_spec.claw"], "contracts": ["List.len(result) == List.len(input)", "reverse(reverse(input)) == input"], "forbidden": ["hallucinated-symbol"] },
-  "reference": "solutions/contract-004.claw"
+  "grade": { "compile": true, "tests": ["tests/reverse_spec.achuk"], "contracts": ["List.len(result) == List.len(input)", "reverse(reverse(input)) == input"], "forbidden": ["hallucinated-symbol"] },
+  "reference": "solutions/contract-004.achuk"
 }

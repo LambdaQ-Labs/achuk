@@ -1,10 +1,10 @@
 #!/bin/sh
-# Build and package a Claw release tarball for the current platform.
+# Build and package a Achuk release tarball for the current platform.
 #
 #   scripts/package.sh <version>        # e.g. scripts/package.sh v0.1.0
 #
-# Produces dist/claw-<version>-<target>.tar.gz with layout:
-#   bin/claw  bin/claw-mcp  bin/claw-lsp  bin/clawc  bin/snapshot
+# Produces dist/achuk-<version>-<target>.tar.gz with layout:
+#   bin/achuk  bin/achuk-mcp  bin/achuk-lsp  bin/achukc  bin/snapshot
 #
 # Requires: zig 0.16.0, cargo. Run from the repo root.
 set -eu
@@ -28,33 +28,33 @@ case "$TARGET" in
 esac
 
 echo ">> building Rust binaries (release)"
-cargo build --release --bin claw --bin claw-mcp --bin claw-lsp
+cargo build --release --bin achuk --bin achuk-mcp --bin achuk-lsp
 
 # --- the bundled model + inference server ---------------------------------
-# model/claw-0.5b-q8.gguf (quantized fine-tune) and a llama.cpp server
+# model/achuk-0.5b-q8.gguf (quantized fine-tune) and a llama.cpp server
 # binary must exist before packaging — the bundle ships AI batteries.
-MODEL_FILE="${CLAW_MODEL_FILE:-$ROOT/model/claw-0.5b-q8.gguf}"
-INFER_BIN="${CLAW_INFER_BIN:-$ROOT/model/claw-infer}"
-[ -f "$MODEL_FILE" ] || { echo "missing model: $MODEL_FILE (set CLAW_MODEL_FILE)" >&2; exit 1; }
-[ -f "$INFER_BIN" ] || { echo "missing inference server: $INFER_BIN (set CLAW_INFER_BIN)" >&2; exit 1; }
+MODEL_FILE="${ACHUK_MODEL_FILE:-$ROOT/model/achuk-0.5b-q8.gguf}"
+INFER_BIN="${ACHUK_INFER_BIN:-$ROOT/model/achuk-infer}"
+[ -f "$MODEL_FILE" ] || { echo "missing model: $MODEL_FILE (set ACHUK_MODEL_FILE)" >&2; exit 1; }
+[ -f "$INFER_BIN" ] || { echo "missing inference server: $INFER_BIN (set ACHUK_INFER_BIN)" >&2; exit 1; }
 
-echo ">> building the compiler (clawc + snapshot)"
+echo ">> building the compiler (achukc + snapshot)"
 ( cd compiler && zig build roc -Doptimize=ReleaseFast && zig build build-snapshot-tool -Doptimize=ReleaseFast )
 
 # --- assemble --------------------------------------------------------------
 STAGE="$(mktemp -d)"; trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$STAGE/bin"
 mkdir -p "$STAGE/model"
-cp "$MODEL_FILE" "$STAGE/model/claw-0.5b-q8.gguf"
-cp "$INFER_BIN" "$STAGE/bin/claw-infer"
-cp target/release/claw "$STAGE/bin/"
-cp target/release/claw-mcp "$STAGE/bin/"
-cp target/release/claw-lsp "$STAGE/bin/"
-cp compiler/zig-out/bin/clawc "$STAGE/bin/"
+cp "$MODEL_FILE" "$STAGE/model/achuk-0.5b-q8.gguf"
+cp "$INFER_BIN" "$STAGE/bin/achuk-infer"
+cp target/release/achuk "$STAGE/bin/"
+cp target/release/achuk-mcp "$STAGE/bin/"
+cp target/release/achuk-lsp "$STAGE/bin/"
+cp compiler/zig-out/bin/achukc "$STAGE/bin/"
 cp compiler/zig-out/bin/snapshot "$STAGE/bin/"
 chmod +x "$STAGE/bin/"*
 
-# Bundled platforms (for `claw new --platform http|cli`). The HTTP host is
+# Bundled platforms (for `achuk new --platform http|cli`). The HTTP host is
 # built from source for this target so the tarball always has a working host
 # (the prebuilt .a files are gitignored / may be stale or absent in CI).
 echo ">> bundling http platform (building host for $ZIG_TARGET)"
@@ -75,7 +75,7 @@ else
 fi
 
 mkdir -p "$ROOT/dist"
-OUT="$ROOT/dist/claw-$VERSION-$TARGET.tar.gz"
+OUT="$ROOT/dist/achuk-$VERSION-$TARGET.tar.gz"
 tar -czf "$OUT" -C "$STAGE" bin model platforms
 echo ">> wrote $OUT"
 tar -tzf "$OUT" | head

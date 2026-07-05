@@ -1,8 +1,8 @@
-# Claw — Roc Fork Strategy
+# Achuk — Roc Fork Strategy
 
 ## Decision: vendored hard fork, with an upstream remote for cherry-picks
 
-Claw diverges heavily from Roc (code-as-database, constraint server, contracts, `--emit=rust`). This is not a patch set on top of Roc — it's a descendant. So:
+Achuk diverges heavily from Roc (code-as-database, constraint server, contracts, `--emit=rust`). This is not a patch set on top of Roc — it's a descendant. So:
 
 - **Vendor Roc's source into `compiler/`** (not a submodule). We own it, rename freely, restructure at will.
 - **Keep an `upstream` git remote** pointing at `roc-lang/roc`. Periodically review upstream commits; cherry-pick fixes we want (type-inference bugfixes, backend improvements) into `compiler/`.
@@ -30,13 +30,13 @@ echo "Forked from roc-lang/roc @ <commit-sha> on <date>" > compiler/UPSTREAM.md
 #    git remote add upstream https://github.com/roc-lang/roc.git
 ```
 
-## Rename pass (Roc → Claw)
+## Rename pass (Roc → Achuk)
 
 Global, mechanical, one PR:
-- `roc` → `claw` (CLI binary, crate names, namespaces)
-- `.roc` → `.claw` (file extension, everywhere it's referenced)
-- stdlib module prefix `Roc*` → `Claw*` (or keep neutral names)
-- docs/URLs → `clawlang.dev`
+- `roc` → `achuk` (CLI binary, crate names, namespaces)
+- `.roc` → `.achuk` (file extension, everywhere it's referenced)
+- stdlib module prefix `Roc*` → `Achuk*` (or keep neutral names)
+- docs/URLs → `achuk.dev`
 - Keep a `RENAME.md` mapping so upstream cherry-picks can be translated.
 
 Do the rename **after** vendoring and **before** any feature work, so all subsequent diffs are clean.
@@ -53,4 +53,4 @@ git -C /tmp/roc-src show <sha> > /tmp/fix.patch
 ## Provenance & license hygiene
 - `compiler/UPSTREAM.md` records the fork point SHA + date.
 - Preserve Roc's LICENSE + attribution in `compiler/`.
-- Decide Claw's own license before first public release (permissive recommended to match Roc + maximize adoption — the opposite of an adoption barrier).
+- Decide Achuk's own license before first public release (permissive recommended to match Roc + maximize adoption — the opposite of an adoption barrier).

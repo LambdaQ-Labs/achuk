@@ -1,7 +1,7 @@
 {
   "id": "gen-atmost1-v1",
   "category": "contract",
-  "prompt": "In Claw, define `atmost1` (parameter p0 = x) : Nat -> Nat applying `Nat.min` to x and the constant 1.",
+  "prompt": "In Achuk, define `atmost1` (parameter p0 = x) : Nat -> Nat applying `Nat.min` to x and the constant 1.",
   "scope": [
     {
       "name": "Nat.min",

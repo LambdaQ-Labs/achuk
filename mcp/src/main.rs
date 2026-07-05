@@ -1,18 +1,18 @@
-//! claw-mcp — a Model Context Protocol server over the code-as-database.
+//! achuk-mcp — a Model Context Protocol server over the code-as-database.
 //!
-//! Lets any MCP client (Claude Code, etc.) drive Claw natively: ask what
+//! Lets any MCP client (Claude Code, etc.) drive Achuk natively: ask what
 //! symbols really exist, get the type-directed candidate menu, and get the
 //! decode grammar that makes hallucination impossible. This is how an agent
-//! writes Claw without inventing APIs — the CDB answers "what's real."
+//! writes Achuk without inventing APIs — the CDB answers "what's real."
 //!
 //! Transport: newline-delimited JSON-RPC 2.0 on stdio (MCP stdio).
-//! Tools: claw_symbols, claw_candidates, claw_mask, claw_render, claw_check.
+//! Tools: achuk_symbols, achuk_candidates, achuk_mask, achuk_render, achuk_check.
 //!
-//! Usage: claw-mcp --db <file>   (default ./claw.cdb)
+//! Usage: achuk-mcp --db <file>   (default ./achuk.cdb)
 
-use claw_cdb::Cdb;
-use claw_constraint::{legal_continuations, HoleContext, Mask};
-use claw_core::parse::parse_type;
+use achuk_cdb::Cdb;
+use achuk_constraint::{legal_continuations, HoleContext, Mask};
+use achuk_core::parse::parse_type;
 use serde_json::{json, Value};
 use std::io::{BufRead, Write};
 
@@ -24,7 +24,7 @@ fn main() {
         .windows(2)
         .find(|w| w[0] == "--db")
         .map(|w| w[1].clone())
-        .unwrap_or_else(|| "claw.cdb".into());
+        .unwrap_or_else(|| "achuk.cdb".into());
 
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
@@ -57,7 +57,7 @@ fn handle(req: &Value, db_path: &str) -> Option<Value> {
         "initialize" => respond(json!({
             "protocolVersion": PROTOCOL_VERSION,
             "capabilities": {"tools": {}},
-            "serverInfo": {"name": "claw-mcp", "version": env!("CARGO_PKG_VERSION")},
+            "serverInfo": {"name": "achuk-mcp", "version": env!("CARGO_PKG_VERSION")},
         })),
         "notifications/initialized" => None,
         "tools/list" => respond(json!({"tools": tool_specs()})),
@@ -82,27 +82,27 @@ fn handle(req: &Value, db_path: &str) -> Option<Value> {
 fn tool_specs() -> Value {
     json!([
         {
-            "name": "claw_symbols",
-            "description": "List every definition bound in the Claw code-as-database (name : type). The authoritative set of things that exist.",
+            "name": "achuk_symbols",
+            "description": "List every definition bound in the Achuk code-as-database (name : type). The authoritative set of things that exist.",
             "inputSchema": {"type": "object", "properties": {}}
         },
         {
-            "name": "claw_candidates",
+            "name": "achuk_candidates",
             "description": "Given a target type signature, return the in-scope definitions whose type unifies with it. Use this instead of guessing an API name.",
             "inputSchema": {"type": "object", "properties": {"type": {"type": "string", "description": "type signature, e.g. 'Nat, Nat -> a'"}}, "required": ["type"]}
         },
         {
-            "name": "claw_render",
-            "description": "Render a definition from the code-as-database as .claw source text (name, signature, body).",
+            "name": "achuk_render",
+            "description": "Render a definition from the code-as-database as .achuk source text (name, signature, body).",
             "inputSchema": {"type": "object", "properties": {"name": {"type": "string", "description": "bound definition name, e.g. 'identity'"}}, "required": ["name"]}
         },
         {
-            "name": "claw_check",
-            "description": "Typecheck produced Claw code with the REAL compiler. Pass a Def-JSON array (the output protocol); every symbol in the database is in scope. Returns COMPILE-OK or the compiler errors.",
+            "name": "achuk_check",
+            "description": "Typecheck produced Achuk code with the REAL compiler. Pass a Def-JSON array (the output protocol); every symbol in the database is in scope. Returns COMPILE-OK or the compiler errors.",
             "inputSchema": {"type": "object", "properties": {"defs": {"type": "array", "description": "Def-JSON array: [{name, expr, ty, effects, deprecated, doc}]"}}, "required": ["defs"]}
         },
         {
-            "name": "claw_mask",
+            "name": "achuk_mask",
             "description": "Given a target type, return the legal symbols plus the GBNF grammar that constrains generation so out-of-scope calls are ungeneratable.",
             "inputSchema": {"type": "object", "properties": {"type": {"type": "string"}}, "required": ["type"]}
         }
@@ -112,7 +112,7 @@ fn tool_specs() -> Value {
 fn call_tool(name: &str, args: &Value, db_path: &str) -> anyhow::Result<String> {
     let cdb = Cdb::open(std::path::Path::new(db_path))?;
     match name {
-        "claw_symbols" => {
+        "achuk_symbols" => {
             let mut out = String::new();
             for (n, h) in cdb.symbols()? {
                 let d = cdb.get(&h)?;
@@ -124,7 +124,7 @@ fn call_tool(name: &str, args: &Value, db_path: &str) -> anyhow::Result<String> 
                 out
             })
         }
-        "claw_candidates" => {
+        "achuk_candidates" => {
             let ty = parse_type(args.get("type").and_then(|v| v.as_str()).unwrap_or(""))
                 .map_err(|e| anyhow::anyhow!("{e}"))?;
             let mut out = String::new();
@@ -142,7 +142,7 @@ fn call_tool(name: &str, args: &Value, db_path: &str) -> anyhow::Result<String> 
                 out
             })
         }
-        "claw_mask" => {
+        "achuk_mask" => {
             let ty = parse_type(args.get("type").and_then(|v| v.as_str()).unwrap_or(""))
                 .map_err(|e| anyhow::anyhow!("{e}"))?;
             let hole = HoleContext {
@@ -155,13 +155,13 @@ fn call_tool(name: &str, args: &Value, db_path: &str) -> anyhow::Result<String> 
                     Ok(format!(
                         "legal symbols: {}\n\n--- GBNF ---\n{}",
                         names.join(", "),
-                        claw_constraint::gbnf::def_json_grammar(&list)
+                        achuk_constraint::gbnf::def_json_grammar(&list)
                     ))
                 }
                 Mask::EmptyWithDiagnostic(d) => Ok(format!("no legal symbols: {}", d.render())),
             }
         }
-        "claw_render" => {
+        "achuk_render" => {
             let name = args
                 .get("name")
                 .and_then(|v| v.as_str())
@@ -170,10 +170,10 @@ fn call_tool(name: &str, args: &Value, db_path: &str) -> anyhow::Result<String> 
                 .resolve(name)
                 .map_err(|_| anyhow::anyhow!("no such definition: {name}"))?;
             let def = cdb.get(&h)?;
-            Ok(claw_core::render::render_def(name, &def))
+            Ok(achuk_core::render::render_def(name, &def))
         }
-        "claw_check" => {
-            use claw_bench_grader::{realc, ProducedDef};
+        "achuk_check" => {
+            use achuk_bench_grader::{realc, ProducedDef};
             let defs: Vec<ProducedDef> = serde_json::from_value(
                 args.get("defs")
                     .cloned()
@@ -188,7 +188,7 @@ fn call_tool(name: &str, args: &Value, db_path: &str) -> anyhow::Result<String> 
             }
             let module = realc::to_module(&scope, &defs);
             let r = realc::clawc_check(&module)?;
-            claw_telemetry::event(
+            achuk_telemetry::event(
                 "mcp_check",
                 serde_json::json!({"compiled": r.compiled, "errors": r.errors}),
                 Some(serde_json::json!({"defs": defs})),
@@ -225,9 +225,9 @@ mod tests {
             .iter()
             .map(|t| t["name"].as_str().unwrap())
             .collect();
-        assert!(names.contains(&"claw_symbols"));
-        assert!(names.contains(&"claw_candidates"));
-        assert!(names.contains(&"claw_mask"));
+        assert!(names.contains(&"achuk_symbols"));
+        assert!(names.contains(&"achuk_candidates"));
+        assert!(names.contains(&"achuk_mask"));
     }
 
     #[test]

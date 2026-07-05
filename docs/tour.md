@@ -1,11 +1,11 @@
-# The Claw language in 10 minutes
+# The Achuk language in 10 minutes
 
-Claw's surface syntax is a small, ML-family functional language (it inherits
-from Roc). Everything below is runnable today with `claw run`.
+Achuk's surface syntax is a small, ML-family functional language (it inherits
+from Roc). Everything below is runnable today with `achuk run`.
 
 ## Values and functions
 
-```claw
+```achuk
 name = "Ada"                 # a binding
 double = |n| n * 2           # a function (lambda)
 add = |a, b| a + b           # two parameters
@@ -13,14 +13,14 @@ add = |a, b| a + b           # two parameters
 
 Functions are called with parentheses, or with method-style dot syntax:
 
-```claw
+```achuk
 add(2, 3)        # 5
 3.to_str()       # "3" — method call form
 ```
 
 ## Strings
 
-```claw
+```achuk
 greeting = "Hello, ${name}!"     # interpolation with ${...}
 Str.join_with(["a", "b"], ", ")  # "a, b"
 ```
@@ -30,7 +30,7 @@ Str.join_with(["a", "b"], ", ")  # "a, b"
 Numeric literals default to a decimal type, so `21 * 2` prints `42.0`. Use
 `Num`/`Nat`/`Int` operations for arithmetic and `.to_str()` to render.
 
-```claw
+```achuk
 x = 21 * 2
 x.to_str()       # "42.0"
 7 % 3            # modulo -> 1
@@ -38,7 +38,7 @@ x.to_str()       # "42.0"
 
 ## Conditionals
 
-```claw
+```achuk
 sign = |n|
     if n > 0 "positive"
     else if n == 0 "zero"
@@ -49,7 +49,7 @@ Booleans combine with `and` / `or` / `not`.
 
 ## Pattern matching
 
-```claw
+```achuk
 classify = |n| match n {
     0 => "zero"
     1 => "one"
@@ -59,7 +59,7 @@ classify = |n| match n {
 
 ## Lists
 
-```claw
+```achuk
 nums = [1, 2, 3]
 nums.map(|n| n * 2)          # [2, 4, 6]
 nums.len()                   # 3
@@ -69,7 +69,7 @@ nums.len()                   # 3
 
 Curly braces group a sequence of bindings ending in a result expression:
 
-```claw
+```achuk
 area = |w, h| {
     a = w * h
     a
@@ -80,7 +80,7 @@ area = |w, h| {
 
 Every runnable program defines `main!`:
 
-```claw
+```achuk
 main! = |args| {
     echo!("running with ${args.len().to_str()} args")
     Ok({})
@@ -95,7 +95,7 @@ main! = |args| {
 
 Fallible operations return a `Result` (`Ok`/`Err`), which you match on:
 
-```claw
+```achuk
 main! = |_args| match risky() {
     Ok(v) => {
         echo!(v)
@@ -119,7 +119,7 @@ A few sharp edges worth knowing early (all hit while writing the examples):
   indexing). Wrap it: `if n <= 0 ([]) else ...`.
 - **Multi-line `if / else if / else` wants a block.** Put it inside `{ }`
   when it's a function body:
-  ```claw
+  ```achuk
   is_prime = |n| {
       if n < 2 False
       else if has_divisor(n, 2) False
@@ -135,4 +135,4 @@ A few sharp edges worth knowing early (all hit while writing the examples):
 - [`examples/`](../examples) — hello, fizzbuzz, pattern matching, args, plus
   three fuller programs: `stats` (descriptive statistics), `primes` (trial
   division), and `gradebook` (averages + letter grades).
-- Let an agent write Claw for you: `claw mcp install` (see getting-started).
+- Let an agent write Achuk for you: `achuk mcp install` (see getting-started).

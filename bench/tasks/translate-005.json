@@ -1,7 +1,7 @@
 {
   "id": "translate-005",
   "category": "translate",
-  "prompt": "Translate this Python to Claw:\n\ndef safe_div(a, b):\n    return None if b == 0 else a // b\n\nTarget: `safeDiv : Nat, Nat -> Maybe Nat`. Use only in-scope symbols.",
+  "prompt": "Translate this Python to Achuk:\n\ndef safe_div(a, b):\n    return None if b == 0 else a // b\n\nTarget: `safeDiv : Nat, Nat -> Maybe Nat`. Use only in-scope symbols.",
   "scope": [
     { "name": "Nat.isZero", "ty": "Nat -> Bool" },
     { "name": "Nat.div", "ty": "Nat, Nat -> Nat" },
@@ -9,6 +9,6 @@
     { "name": "Maybe.none", "ty": "Maybe a" },
     { "name": "Bool.if", "ty": "Bool, a, a -> a" }
   ],
-  "grade": { "compile": true, "tests": ["tests/safe_div_spec.claw"], "contracts": ["b == 0 => result == none"], "forbidden": ["hallucinated-symbol"] },
-  "reference": "solutions/translate-005.claw"
+  "grade": { "compile": true, "tests": ["tests/safe_div_spec.achuk"], "contracts": ["b == 0 => result == none"], "forbidden": ["hallucinated-symbol"] },
+  "reference": "solutions/translate-005.achuk"
 }

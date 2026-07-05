@@ -80,7 +80,7 @@ fn builtin_call(name: &str, args: &[Value]) -> Result<Value, EvalError> {
         ("List.len", [Value::List(xs)]) => Ok(Value::Int(xs.len() as i64)),
         ("Nat.max", [a, b]) => Ok(Value::Int(as_int(a)?.max(as_int(b)?))),
         ("Nat.min", [a, b]) => Ok(Value::Int(as_int(a)?.min(as_int(b)?))),
-        // Saturating, matching claw_core::interp's builtin — a contract like
+        // Saturating, matching achuk_core::interp's builtin — a contract like
         // `result == Nat.add(a, b)` must agree with the interpreter at the
         // integer boundary rather than erroring where the runtime saturates.
         ("Nat.add", [a, b]) => Ok(Value::Int(as_int(a)?.saturating_add(as_int(b)?))),

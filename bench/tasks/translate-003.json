@@ -1,7 +1,7 @@
 {
   "id": "translate-003",
   "category": "translate",
-  "prompt": "Translate this JavaScript to Claw:\n\nfunction firstMatch(xs, p) {\n  for (const x of xs) if (p(x)) return x;\n  return null;\n}\n\nTarget signature: `firstMatch : List a, (a -> Bool) -> Maybe a`. Use only in-scope symbols.",
+  "prompt": "Translate this JavaScript to Achuk:\n\nfunction firstMatch(xs, p) {\n  for (const x of xs) if (p(x)) return x;\n  return null;\n}\n\nTarget signature: `firstMatch : List a, (a -> Bool) -> Maybe a`. Use only in-scope symbols.",
   "scope": [
     { "name": "List.find", "ty": "List a, (a -> Bool) -> Maybe a" },
     { "name": "List.filter", "ty": "List a, (a -> Bool) -> List a" },
@@ -9,9 +9,9 @@
   ],
   "grade": {
     "compile": true,
-    "tests": ["tests/first_match_spec.claw"],
+    "tests": ["tests/first_match_spec.achuk"],
     "contracts": [],
     "forbidden": ["hallucinated-symbol"]
   },
-  "reference": "solutions/translate-003.claw"
+  "reference": "solutions/translate-003.achuk"
 }

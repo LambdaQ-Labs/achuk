@@ -1,4 +1,4 @@
-//! claw-effects — effect inference and capability checking (WS-F).
+//! achuk-effects — effect inference and capability checking (WS-F).
 //!
 //! Every definition has an *effect row*: the set of effects (`Net`,
 //! `Read`, `Write`, …) it may perform. A pure function's row is empty —
@@ -12,8 +12,8 @@
 //!
 //! Spec: docs/syntax.md §3, master-plan WS-F.
 
-use claw_cdb::Cdb;
-use claw_core::{Def, Expr, Hash};
+use achuk_cdb::Cdb;
+use achuk_core::{Def, Expr, Hash};
 use std::collections::BTreeSet;
 
 /// An effect row: a sorted set of effect labels. Empty = pure.
@@ -27,7 +27,7 @@ pub fn required_capability(effect: &str) -> String {
 
 /// Infer the effect row of a definition, unioning the declared effects of
 /// everything it transitively references in the CDB. Cycle-safe.
-pub fn infer(cdb: &Cdb, def: &Def) -> claw_cdb::Result<EffectRow> {
+pub fn infer(cdb: &Cdb, def: &Def) -> achuk_cdb::Result<EffectRow> {
     let mut row: EffectRow = def.effects.iter().cloned().collect();
     let mut seen: BTreeSet<Hash> = BTreeSet::new();
     let mut stack: Vec<Hash> = collect_refs(&def.expr);
@@ -52,7 +52,7 @@ fn collect_refs(e: &Expr) -> Vec<Hash> {
 /// For every free variable that resolves to a bound CDB symbol, union that
 /// symbol's declared effects. This is how we check effect-soundness of
 /// model-produced code, whose references are names, not content hashes.
-pub fn infer_by_names(cdb: &Cdb, def: &Def) -> claw_cdb::Result<EffectRow> {
+pub fn infer_by_names(cdb: &Cdb, def: &Def) -> achuk_cdb::Result<EffectRow> {
     let mut row: EffectRow = def.effects.iter().cloned().collect();
     for name in def.expr.free_vars() {
         if let Ok(h) = cdb.resolve(&name) {
@@ -65,7 +65,7 @@ pub fn infer_by_names(cdb: &Cdb, def: &Def) -> claw_cdb::Result<EffectRow> {
 }
 
 /// Name-based soundness check (declared effects must cover name-inferred).
-pub fn check_by_names(cdb: &Cdb, def: &Def) -> claw_cdb::Result<EffectCheck> {
+pub fn check_by_names(cdb: &Cdb, def: &Def) -> achuk_cdb::Result<EffectCheck> {
     let declared: EffectRow = def.effects.iter().cloned().collect();
     let inferred = infer_by_names(cdb, def)?;
     let undeclared: EffectRow = inferred.difference(&declared).cloned().collect();
@@ -93,7 +93,7 @@ impl EffectCheck {
 
 /// Check that a def's declared effect row covers everything it actually
 /// does. `undeclared` non-empty ⇒ the signature under-claims its effects.
-pub fn check(cdb: &Cdb, def: &Def) -> claw_cdb::Result<EffectCheck> {
+pub fn check(cdb: &Cdb, def: &Def) -> achuk_cdb::Result<EffectCheck> {
     let declared: EffectRow = def.effects.iter().cloned().collect();
     let inferred = infer(cdb, def)?;
     let undeclared: EffectRow = inferred.difference(&declared).cloned().collect();
@@ -111,7 +111,7 @@ pub fn missing_capabilities(
     cdb: &Cdb,
     def: &Def,
     granted: &BTreeSet<String>,
-) -> claw_cdb::Result<BTreeSet<String>> {
+) -> achuk_cdb::Result<BTreeSet<String>> {
     let row = infer(cdb, def)?;
     Ok(row
         .iter()
@@ -123,7 +123,7 @@ pub fn missing_capabilities(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use claw_core::{Lit, Type};
+    use achuk_core::{Lit, Type};
 
     fn named(n: &str) -> Type {
         Type::Named(n.into())

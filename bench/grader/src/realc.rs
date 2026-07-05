@@ -1,5 +1,5 @@
 //! Real-compiler compile signal: render a task's scope + the produced
-//! definitions as an actual `.claw` module and run `clawc check` on it.
+//! definitions as an actual `.achuk` module and run `achukc check` on it.
 //!
 //! The grader's built-in `compiled` predicate is a fast proxy ("no dangling
 //! references"). This module is the ground truth: the vendored compiler's
@@ -8,17 +8,17 @@
 //! stub typechecks at any signature without implementing semantics), and
 //! CDB names are mangled to legal surface identifiers (`Nat.add` →
 //! `nat_add`, `File.read!` → `file_read`) in both the stubs and the
-//! produced expressions, so what clawc sees is one closed, honest module.
+//! produced expressions, so what achukc sees is one closed, honest module.
 //!
-//! clawc's exit code is not a reliable gate (warnings can flip it); the
+//! achukc's exit code is not a reliable gate (warnings can flip it); the
 //! signal is the `Found N error(s)` line it always prints.
 
 use crate::{ProducedDef, ScopeEntry};
-use claw_core::render::render_expr;
-use claw_core::{Expr, Type};
+use achuk_core::render::render_expr;
+use achuk_core::{Expr, Type};
 use std::path::PathBuf;
 
-/// Mangle a CDB symbol name to a legal `.claw` value identifier.
+/// Mangle a CDB symbol name to a legal `.achuk` value identifier.
 pub fn mangle(name: &str) -> String {
     let mut s = name.replace('.', "_").replace('!', "");
     s = s.to_lowercase();
@@ -96,7 +96,7 @@ fn render_stub(entry_name: &str, ty: &Type) -> String {
     format!("{name} : {}\n{name} = {body}", map_ty(ty))
 }
 
-/// Build the complete `.claw` module for a (scope, produced) pair.
+/// Build the complete `.achuk` module for a (scope, produced) pair.
 pub fn to_module(scope: &[(String, Type)], produced: &[ProducedDef]) -> String {
     let produced_names: Vec<String> = produced
         .iter()
@@ -131,21 +131,21 @@ pub fn to_module(scope: &[(String, Type)], produced: &[ProducedDef]) -> String {
 pub fn task_module(scope: &[ScopeEntry], produced: &[ProducedDef]) -> anyhow::Result<String> {
     let mut pairs = Vec::with_capacity(scope.len());
     for e in scope {
-        let ty = claw_core::parse::parse_type(&e.ty)
+        let ty = achuk_core::parse::parse_type(&e.ty)
             .map_err(|err| anyhow::anyhow!("scope `{}`: {err}", e.name))?;
         pairs.push((e.name.clone(), ty));
     }
     Ok(to_module(&pairs, produced))
 }
 
-/// Locate clawc: `$CLAW_CLAWC`, else `clawc` on PATH.
-fn find_clawc() -> PathBuf {
-    std::env::var("CLAW_CLAWC")
+/// Locate achukc: `$ACHUK_CLAWC`, else `achukc` on PATH.
+fn find_achukc() -> PathBuf {
+    std::env::var("ACHUK_CLAWC")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("clawc"))
+        .unwrap_or_else(|_| PathBuf::from("achukc"))
 }
 
-/// The verdict of a real `clawc check` run.
+/// The verdict of a real `achukc check` run.
 #[derive(Debug, Clone)]
 pub struct RealCheck {
     pub compiled: bool,
@@ -154,21 +154,21 @@ pub struct RealCheck {
     pub detail: String,
 }
 
-/// Run `clawc check` on a module. The signal is the `Found N error(s)`
+/// Run `achukc check` on a module. The signal is the `Found N error(s)`
 /// summary line, not the exit code.
 pub fn clawc_check(module_src: &str) -> anyhow::Result<RealCheck> {
     static SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let tmp = std::env::temp_dir().join(format!(
-        "claw-realc-{}-{}.claw",
+        "achuk-realc-{}-{}.achuk",
         std::process::id(),
         SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     std::fs::write(&tmp, module_src)?;
-    let out = std::process::Command::new(find_clawc())
+    let out = std::process::Command::new(find_achukc())
         .arg("check")
         .arg(&tmp)
         .output()
-        .map_err(|e| anyhow::anyhow!("running clawc: {e} (set CLAW_CLAWC)"))?;
+        .map_err(|e| anyhow::anyhow!("running achukc: {e} (set ACHUK_CLAWC)"))?;
     let _ = std::fs::remove_file(&tmp);
 
     let text = format!(
@@ -185,7 +185,7 @@ pub fn clawc_check(module_src: &str) -> anyhow::Result<RealCheck> {
             let (n, tail) = rest.split_once(' ')?;
             tail.starts_with("error").then(|| n.parse::<u32>().ok())?
         })
-        .ok_or_else(|| anyhow::anyhow!("clawc produced no 'Found N error(s)' summary:\n{text}"))?;
+        .ok_or_else(|| anyhow::anyhow!("achukc produced no 'Found N error(s)' summary:\n{text}"))?;
 
     let detail = text
         .lines()
@@ -213,20 +213,20 @@ mod tests {
 
     #[test]
     fn module_renders_stubs_and_produced() {
-        use claw_core::{Def, Expr};
+        use achuk_core::{Def, Expr};
         let scope = vec![(
             "Nat.max".to_string(),
-            claw_core::parse::parse_type("Nat, Nat -> Nat").unwrap(),
+            achuk_core::parse::parse_type("Nat, Nat -> Nat").unwrap(),
         )];
         let def = Def::new(
             Expr::Lam {
                 params: vec!["p0".into()],
                 body: Box::new(Expr::App {
                     func: Box::new(Expr::Var("Nat.max".into())),
-                    args: vec![Expr::Var("p0".into()), Expr::Lit(claw_core::Lit::Int(6))],
+                    args: vec![Expr::Var("p0".into()), Expr::Lit(achuk_core::Lit::Int(6))],
                 }),
             },
-            claw_core::parse::parse_type("Nat -> Nat").unwrap(),
+            achuk_core::parse::parse_type("Nat -> Nat").unwrap(),
         );
         let m = to_module(
             &scope,

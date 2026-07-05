@@ -1,4 +1,4 @@
-//! claw-bench-runner — drives models through benchmark tasks (WS-J).
+//! achuk-bench-runner — drives models through benchmark tasks (WS-J).
 //!
 //! Arms (docs/benchmark-harness.md §4):
 //!   A0 — baseline: prompt only, no CDB context
@@ -6,14 +6,14 @@
 //!   A2 — +mask: decode constrained to the scope-mask's GBNF grammar
 //!
 //! Prototype protocol: the model emits produced definitions as JSON
-//! (`Vec<Def>` in claw-core's serde format). Parse failures feed back as
-//! retry context, grading is deterministic (claw-bench-grader). The real
+//! (`Vec<Def>` in achuk-core's serde format). Parse failures feed back as
+//! retry context, grading is deterministic (achuk-bench-grader). The real
 //! surface syntax replaces the JSON protocol when the compiler lands; the
 //! arms, retry loop, and reporting stay fixed.
 
-use claw_bench_grader::{grade, GradeResult, ProducedDef, Task};
-use claw_constraint::{legal_continuations, HoleContext};
-use claw_core::Type;
+use achuk_bench_grader::{grade, GradeResult, ProducedDef, Task};
+use achuk_constraint::{legal_continuations, HoleContext};
+use achuk_core::Type;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -103,13 +103,13 @@ pub struct CmdGenerator {
 }
 
 impl CmdGenerator {
-    /// From CLAW_MODEL_CMD, e.g.
-    /// `CLAW_MODEL_CMD="vikasit run --pure -m opencode/deepseek-v4-flash-free"`.
+    /// From ACHUK_MODEL_CMD, e.g.
+    /// `ACHUK_MODEL_CMD="vikasit run --pure -m opencode/deepseek-v4-flash-free"`.
     pub fn from_env() -> anyhow::Result<Self> {
-        let raw = std::env::var("CLAW_MODEL_CMD")
-            .map_err(|_| anyhow::anyhow!("CLAW_MODEL_CMD not set"))?;
+        let raw = std::env::var("ACHUK_MODEL_CMD")
+            .map_err(|_| anyhow::anyhow!("ACHUK_MODEL_CMD not set"))?;
         let argv: Vec<String> = raw.split_whitespace().map(String::from).collect();
-        anyhow::ensure!(!argv.is_empty(), "CLAW_MODEL_CMD is empty");
+        anyhow::ensure!(!argv.is_empty(), "ACHUK_MODEL_CMD is empty");
         Ok(CmdGenerator { argv, tokens: 0 })
     }
 }
@@ -137,8 +137,8 @@ impl Generate for CmdGenerator {
 }
 
 /// OpenAI-compatible chat-completions client.
-/// Config via env: CLAW_MODEL_URL (e.g. http://localhost:8000/v1),
-/// CLAW_MODEL_NAME, CLAW_MODEL_KEY (optional).
+/// Config via env: ACHUK_MODEL_URL (e.g. http://localhost:8000/v1),
+/// ACHUK_MODEL_NAME, ACHUK_MODEL_KEY (optional).
 pub struct HttpGenerator {
     base_url: String,
     model: String,
@@ -150,10 +150,10 @@ pub struct HttpGenerator {
 impl HttpGenerator {
     pub fn from_env() -> anyhow::Result<Self> {
         Ok(HttpGenerator {
-            base_url: std::env::var("CLAW_MODEL_URL")
-                .map_err(|_| anyhow::anyhow!("CLAW_MODEL_URL not set"))?,
-            model: std::env::var("CLAW_MODEL_NAME").unwrap_or_else(|_| "default".into()),
-            api_key: std::env::var("CLAW_MODEL_KEY").ok(),
+            base_url: std::env::var("ACHUK_MODEL_URL")
+                .map_err(|_| anyhow::anyhow!("ACHUK_MODEL_URL not set"))?,
+            model: std::env::var("ACHUK_MODEL_NAME").unwrap_or_else(|_| "default".into()),
+            api_key: std::env::var("ACHUK_MODEL_KEY").ok(),
             tokens: 0,
             grammar: None,
         })
@@ -238,7 +238,7 @@ pub fn build_prompt(task: &Task, arm: Arm, prior_feedback: &[String]) -> String 
 pub fn grade_produced(
     task: &Task,
     produced: &[ProducedDef],
-) -> anyhow::Result<claw_bench_grader::GradeResult> {
+) -> anyhow::Result<achuk_bench_grader::GradeResult> {
     let cdb = task.build_scope_cdb()?;
     grade(task, produced, &cdb, 0, 0)
 }
@@ -416,7 +416,7 @@ impl Report {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use claw_bench_grader::{Category, GradeSpec, ScopeEntry};
+    use achuk_bench_grader::{Category, GradeSpec, ScopeEntry};
 
     fn task_with_scope() -> Task {
         Task {

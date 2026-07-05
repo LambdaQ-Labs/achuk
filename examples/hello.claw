@@ -1,7 +1,0 @@
-# The smallest useful Claw program. Run it with: claw run hello.claw
-greet = |who| "Hello, ${who}!"
-
-main! = |_args| {
-    echo!(greet("world"))
-    Ok({})
-}

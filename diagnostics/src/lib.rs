@@ -1,4 +1,4 @@
-//! claw-diagnostics — the structured-error protocol (WS-D).
+//! achuk-diagnostics — the structured-error protocol (WS-D).
 //!
 //! The struct is the source of truth; prose is a rendering. Agents consume
 //! `Diagnostic` JSON, apply the top-ranked patch, and re-check — no prose
@@ -6,7 +6,7 @@
 //!
 //! Spec: docs/p2-spec.md §2.5 / master-plan WS-D.
 
-use claw_core::Hash;
+use achuk_core::Hash;
 use serde::{Deserialize, Serialize};
 
 /// Where an error lives: a definition (by content hash) + a span within

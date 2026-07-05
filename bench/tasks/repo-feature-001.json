@@ -13,12 +13,12 @@
   ],
   "grade": {
     "compile": true,
-    "tests": ["tests/transfer_spec.claw"],
+    "tests": ["tests/transfer_spec.achuk"],
     "contracts": [
       "ok(result) => from'.balance == from.balance - amt",
       "ok(result) => to'.balance == to.balance + amt"
     ],
     "forbidden": ["unsafe", "hallucinated-symbol"]
   },
-  "reference": "solutions/repo-feature-001.claw"
+  "reference": "solutions/repo-feature-001.achuk"
 }

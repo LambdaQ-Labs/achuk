@@ -7,13 +7,13 @@ effect names are ungeneratable at the token level. Scores valid-JSON /
 hallucination-free / effects-sound with the same rules as
 eval_gate_batched.py, and dumps outputs-a2.jsonl for real-compile grading.
 
-    LLAMA_URL=http://127.0.0.1:8899 CLAW_TASKS=../bench/tasks-large \
+    LLAMA_URL=http://127.0.0.1:8899 ACHUK_TASKS=../bench/tasks-large \
     GRAMMARS=../bench/grammars python a2_eval.py
 """
 import glob, json, os, re, urllib.request
 
 URL = os.environ.get("LLAMA_URL", "http://127.0.0.1:8899")
-TASKS_DIR = os.environ.get("CLAW_TASKS", "../bench/tasks-large")
+TASKS_DIR = os.environ.get("ACHUK_TASKS", "../bench/tasks-large")
 GRAMMARS = os.environ.get("GRAMMARS", "../bench/grammars")
 PROTO = open("train.py").read().split('PROTOCOL = """')[1].split('"""')[0]
 

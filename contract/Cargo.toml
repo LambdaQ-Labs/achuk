@@ -1,5 +1,5 @@
 [package]
-name = "claw-contract"
+name = "achuk-contract"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

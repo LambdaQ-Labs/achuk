@@ -1,7 +1,7 @@
-# Registry & playground: what the incumbents have, what Claw builds
+# Registry & playground: what the incumbents have, what Achuk builds
 
 Research pass over crates.io, npmjs.com, pkg.go.dev, play.rust-lang.org /
-go.dev/play — feature inventory, then the Claw plan with the advantages a
+go.dev/play — feature inventory, then the Achuk plan with the advantages a
 content-addressed, machine-verified language makes possible.
 
 ## What the incumbents offer
@@ -30,13 +30,13 @@ content-addressed, machine-verified language makes possible.
 | Examples | preloaded menu | preloaded menu |
 | Cost to run | real servers + sandboxing | real servers + sandboxing |
 
-## The Claw plan
+## The Achuk plan
 
 ### Registry — "the registry where every package is machine-verified"
 
-We already have: `claw publish` / `claw add`, the registry service
+We already have: `achuk publish` / `achuk add`, the registry service
 (axum + Postgres + content-addressed blobs) **hosted at
-registry.clawlang.dev** (the CLI default), and a package format. What
+registry.achuk.dev** (the CLI default), and a package format. What
 makes ours different is not parity — it's what content-addressing + the
 grading pipeline enable that npm/crates structurally cannot do:
 
@@ -50,16 +50,16 @@ grading pipeline enable that npm/crates structurally cannot do:
    signature + doc + source. No docs.rs build farm needed — the package IS
    the database.
 4. **No typosquatting economics.** Content hashes are identity; names are
-   labels over hashes. `claw add foo` shows the hash + verification state.
+   labels over hashes. `achuk add foo` shows the hash + verification state.
 5. **AI-consumable by design.** The registry speaks the same protocol as
-   the local CDB — an agent's MCP `claw_candidates` can search the
+   the local CDB — an agent's MCP `achuk_candidates` can search the
    ecosystem, not just the project. That's the npm-for-agents story.
 
 Build order (infra ≈ one small VPS or free-tier fly/CF):
 - ~~v0: host the existing service~~ **done** — live at
-  registry.clawlang.dev, with the MCP-compat invariant shipped: publish
+  registry.achuk.dev, with the MCP-compat invariant shipped: publish
   requires parseable defs (name/type/effects/doc, served at
-  `GET /defs/:name/:version`), and `claw add` ingests them into the
+  `GET /defs/:name/:version`), and `achuk add` ingests them into the
   project CDB (point 5 above, delivered)
 - v1: web UI — search, package page (defs, types, docs, verify badge),
   install snippet, versions
@@ -67,8 +67,8 @@ Build order (infra ≈ one small VPS or free-tier fly/CF):
 
 ### Playground — real engine, zero servers
 
-Rust/Go playgrounds cost real server fleets. We can skip that: claw-core
-(parser, type unifier, interpreter, renderer) and claw-constraint are pure
+Rust/Go playgrounds cost real server fleets. We can skip that: achuk-core
+(parser, type unifier, interpreter, renderer) and achuk-constraint are pure
 Rust — they compile to **WebAssembly** as-is. The playground then runs the
 ACTUAL engine in the browser:
 
@@ -77,21 +77,21 @@ ACTUAL engine in the browser:
 - shows the real decode grammar for the current scope
 - costs $0 at any scale, works offline
 
-Full `clawc` (Zig) compilation stays a local-install feature; the wasm
+Full `achukc` (Zig) compilation stays a local-install feature; the wasm
 playground covers the teach-and-try loop (define, query, run, share).
 Share links = code in the URL fragment — no storage backend at all.
 
 Build order:
-- ~~v0: wasm-pack claw-core + claw-cdb(in-memory) + claw-constraint;
+- ~~v0: wasm-pack achuk-core + achuk-cdb(in-memory) + achuk-constraint;
   swap the playground's hand-written JS mirror for the real engine~~
-  **done** — the wasm playground is live at clawlang.dev
+  **done** — the wasm playground is live at achuk.dev
 - v1: examples menu (repo examples), share-by-URL, format
-- v2: `claw test` semantics in-browser via contracts; embed on docs pages
+- v2: `achuk test` semantics in-browser via contracts; embed on docs pages
 
 ### Also worth copying (cheap, high-signal)
 
-- **pkg.go.dev's badge generator** → `claw badge` printing a shields URL
+- **pkg.go.dev's badge generator** → `achuk badge` printing a shields URL
   with the verify state.
-- **Rust playground's example menu** → our `examples/*.claw` are already
+- **Rust playground's example menu** → our `examples/*.achuk` are already
   the right content.
 - **npm's provenance** → we sign content hashes; simpler and stronger.

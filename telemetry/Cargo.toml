@@ -1,5 +1,5 @@
 [package]
-name = "claw-telemetry"
+name = "achuk-telemetry"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -15,5 +15,5 @@
     "contracts": ["result >= a", "result >= b"],
     "forbidden": ["hallucinated-symbol"]
   },
-  "reference": "solutions/from-scratch-007.claw"
+  "reference": "solutions/from-scratch-007.achuk"
 }

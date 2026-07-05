@@ -17,5 +17,5 @@
     "contracts": ["result >= lo", "result <= hi"],
     "forbidden": ["hallucinated-symbol"]
   },
-  "reference": "solutions/contract-003.claw"
+  "reference": "solutions/contract-003.achuk"
 }

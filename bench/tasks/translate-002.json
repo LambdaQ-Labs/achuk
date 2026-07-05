@@ -1,7 +1,7 @@
 {
   "id": "translate-002",
   "category": "translate",
-  "prompt": "Translate this Python function to Claw:\n\ndef abs_diff(a, b):\n    return a - b if a > b else b - a\n\nTarget signature: `absDiff : Nat, Nat -> Nat`. Subtraction on Nat is checked; handle both orders using only in-scope symbols.",
+  "prompt": "Translate this Python function to Achuk:\n\ndef abs_diff(a, b):\n    return a - b if a > b else b - a\n\nTarget signature: `absDiff : Nat, Nat -> Nat`. Subtraction on Nat is checked; handle both orders using only in-scope symbols.",
   "scope": [
     { "name": "Nat.max", "ty": "Nat, Nat -> Nat" },
     { "name": "Nat.min", "ty": "Nat, Nat -> Nat" },
@@ -9,9 +9,9 @@
   ],
   "grade": {
     "compile": true,
-    "tests": ["tests/abs_diff_spec.claw"],
+    "tests": ["tests/abs_diff_spec.achuk"],
     "contracts": ["absDiff(a, b) == absDiff(b, a)"],
     "forbidden": ["hallucinated-symbol"]
   },
-  "reference": "solutions/translate-002.claw"
+  "reference": "solutions/translate-002.achuk"
 }

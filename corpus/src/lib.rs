@@ -1,8 +1,8 @@
-//! claw-corpus — synthetic training-corpus generator (WS-H).
+//! achuk-corpus — synthetic training-corpus generator (WS-H).
 //!
 //! The cold-start problem is the thing that kills new AI-first languages:
 //! a language with no code has no training data, so models are worst at
-//! exactly the language they'd be used for. Claw's escape is to *make* the
+//! exactly the language they'd be used for. Achuk's escape is to *make* the
 //! data. This crate generates valid `(prompt, Def-JSON)` pairs directly
 //! from a CDB — every pair is a real, in-scope, type-correct program the
 //! grammar would accept — so a model can be fine-tuned toward the language
@@ -15,8 +15,8 @@
 //!
 //! Spec: master-plan WS-H (the 80% — the cold-start escape).
 
-use claw_cdb::Cdb;
-use claw_core::{Def, Expr, Type};
+use achuk_cdb::Cdb;
+use achuk_core::{Def, Expr, Type};
 use serde::{Deserialize, Serialize};
 
 /// One supervised training example.
@@ -34,7 +34,7 @@ pub struct Example {
 /// Generate training examples from a CDB: for every in-scope symbol that
 /// is a unary or binary function, synthesize a wrapper definition that
 /// applies it, paired with a prompt describing the task. Deterministic.
-pub fn generate(cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
+pub fn generate(cdb: &Cdb) -> achuk_cdb::Result<Vec<Example>> {
     let mut out = Vec::new();
     for (name, hash) in cdb.symbols()? {
         let def = cdb.get(&hash)?;
@@ -109,7 +109,7 @@ fn wrapper_example(name: &str, params: &[Type], ret: &Type, effects: &[String]) 
 /// corpus can synthesize programs over, so a useful corpus exists with no
 /// project to ingest. Deterministic.
 pub fn stdlib_cdb() -> Cdb {
-    use claw_core::{parse::parse_type, Expr, Lit};
+    use achuk_core::{parse::parse_type, Expr, Lit};
     // Pure symbols: (name, signature). Effectful platform symbols (the `sys`
     // platform's hosted effects) are added below with their effect rows —
     // `Unit` stands for the surface `{}` return.
@@ -174,7 +174,7 @@ pub fn stdlib_cdb() -> Cdb {
 /// Compose examples: for unary `g : A -> B` and unary `f : B -> C`, emit
 /// `\p0 -> f (g p0)` : A -> C. Over the stdlib this yields many
 /// type-correct, hallucination-free programs.
-fn compose_examples(cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
+fn compose_examples(cdb: &Cdb) -> achuk_cdb::Result<Vec<Example>> {
     let unary: Vec<(String, Type, Type, Vec<String>)> = cdb
         .symbols()?
         .into_iter()
@@ -194,7 +194,7 @@ fn compose_examples(cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
         for (fname, fb, fc, feff) in &unary {
             // g : ga -> gb ; f : fb -> fc ; composable when gb unifies fb
             // (reference by name, not hash — see wrapper_example)
-            if claw_core::unify(gb, fb).is_none() {
+            if achuk_core::unify(gb, fb).is_none() {
                 continue;
             }
             let body = Expr::App {
@@ -250,8 +250,8 @@ fn compose_examples(cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
 /// *shape* the P4 gate tasks need and the wrapper/compose corpus lacked;
 /// teaching it broadly (many symbols × many K) generalizes rather than
 /// memorizing any one task. Hallucination-free by construction.
-fn literal_examples(cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
-    use claw_core::Lit;
+fn literal_examples(cdb: &Cdb) -> achuk_cdb::Result<Vec<Example>> {
+    use achuk_core::Lit;
     let binops: Vec<(String, Type)> = cdb
         .symbols()?
         .into_iter()
@@ -309,8 +309,8 @@ fn literal_examples(cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
 /// the branching shape the wrapper/compose/literal corpus lacked — an
 /// out-of-shape class the P4 gate flagged. Requires `Bool.if` in scope;
 /// hallucination-free by construction (uses q + Bool.if, both real).
-fn conditional_examples(cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
-    use claw_core::Lit;
+fn conditional_examples(cdb: &Cdb) -> achuk_cdb::Result<Vec<Example>> {
+    use achuk_core::Lit;
     if cdb.resolve("Bool.if").is_err() {
         return Ok(Vec::new());
     }
@@ -379,7 +379,7 @@ fn conditional_examples(cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
 /// Teaches the model to define a local helper and reference it as a sibling
 /// (the other missing shape). `uses` lists only external CDB symbols; the
 /// helper is defined in the same completion, so it's not a hallucination.
-fn multidef_examples(cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
+fn multidef_examples(cdb: &Cdb) -> achuk_cdb::Result<Vec<Example>> {
     let unary: Vec<String> = cdb
         .symbols()?
         .into_iter()
@@ -442,8 +442,8 @@ fn multidef_examples(cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
 /// Native-`If` programs: `\p0 -> if q(p0) then A else B`, with constant
 /// and parameter branches. conditional_examples teaches the `Bool.if` CALL
 /// shape; this teaches the lazy `If` SYNTAX — a general model needs both.
-fn if_examples(cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
-    use claw_core::Lit;
+fn if_examples(cdb: &Cdb) -> achuk_cdb::Result<Vec<Example>> {
+    use achuk_core::Lit;
     let nat = || Type::Named("Nat".into());
     let mut out = Vec::new();
     for q in &nat_preds(cdb)? {
@@ -488,7 +488,7 @@ fn if_examples(cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
 
 /// Let-binding programs: `\p0 -> let p8 = f(p0) in g(p8)`. Binder names
 /// come from the same p-pool as parameters — one pool, one protocol rule.
-fn let_examples(cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
+fn let_examples(cdb: &Cdb) -> achuk_cdb::Result<Vec<Example>> {
     let unary = nat_unary(cdb)?;
     let nat = || Type::Named("Nat".into());
     let mut out = Vec::new();
@@ -529,8 +529,8 @@ fn let_examples(cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
 
 /// Pattern-matching over Maybe/Result plus tag construction — how a real
 /// program handles absence and failure. Pattern binders use the p-pool.
-fn match_examples(_cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
-    use claw_core::{Lit, Pat};
+fn match_examples(_cdb: &Cdb) -> achuk_cdb::Result<Vec<Example>> {
+    use achuk_core::{Lit, Pat};
     let nat = || Type::Named("Nat".into());
     let maybe_nat = || Type::App("Maybe".into(), vec![nat()]);
     let result_nat = || Type::App("Result".into(), vec![nat(), Type::Var("e".into())]);
@@ -617,8 +617,8 @@ fn match_examples(_cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
 
 /// Recursive definitions: a named def calling ITSELF — legal under the
 /// named-defs protocol. Guarded by a base case; the interp is step-bounded.
-fn recursion_examples(cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
-    use claw_core::Lit;
+fn recursion_examples(cdb: &Cdb) -> achuk_cdb::Result<Vec<Example>> {
+    use achuk_core::Lit;
     if cdb.resolve("Nat.isZero").is_err() || cdb.resolve("Nat.dec").is_err() {
         return Ok(Vec::new());
     }
@@ -668,7 +668,7 @@ fn recursion_examples(cdb: &Cdb) -> claw_cdb::Result<Vec<Example>> {
 
 // --- small shared helpers for the shape classes ----------------------------
 
-fn nat_preds(cdb: &Cdb) -> claw_cdb::Result<Vec<String>> {
+fn nat_preds(cdb: &Cdb) -> achuk_cdb::Result<Vec<String>> {
     Ok(cdb
         .symbols()?
         .into_iter()
@@ -687,7 +687,7 @@ fn nat_preds(cdb: &Cdb) -> claw_cdb::Result<Vec<String>> {
         .collect())
 }
 
-fn nat_unary(cdb: &Cdb) -> claw_cdb::Result<Vec<String>> {
+fn nat_unary(cdb: &Cdb) -> achuk_cdb::Result<Vec<String>> {
     Ok(cdb
         .symbols()?
         .into_iter()
@@ -724,8 +724,8 @@ fn named_example(name: &str, def: Def, prompt: String, uses: Vec<String>) -> Exa
 /// than memorizing one instruction style. Standard SFT augmentation.
 const PROMPT_PREFIXES: &[&str] = &[
     "",
-    "In Claw, ",
-    "Write Claw code: ",
+    "In Achuk, ",
+    "Write Achuk code: ",
     "Task — ",
     "Using only the in-scope symbols, ",
 ];
@@ -754,9 +754,9 @@ pub fn augment(examples: &[Example]) -> Vec<Example> {
 }
 
 /// The full synthetic corpus over the built-in stdlib: (wrappers + compose)
-/// × prompt augmentation. This is what `claw corpus gen --stdlib` emits —
+/// × prompt augmentation. This is what `achuk corpus gen --stdlib` emits —
 /// the training seed for the bundled model.
-pub fn generate_stdlib() -> claw_cdb::Result<Vec<Example>> {
+pub fn generate_stdlib() -> achuk_cdb::Result<Vec<Example>> {
     let cdb = stdlib_cdb();
     let mut base = generate(&cdb)?;
     base.extend(compose_examples(&cdb)?);
@@ -783,7 +783,7 @@ pub fn to_jsonl(examples: &[Example]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use claw_core::Lit;
+    use achuk_core::Lit;
 
     fn named(n: &str) -> Type {
         Type::Named(n.into())

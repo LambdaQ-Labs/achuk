@@ -14,5 +14,5 @@
     "contracts": ["result == n + n"],
     "forbidden": ["hallucinated-symbol"]
   },
-  "reference": "solutions/from-scratch-001.claw"
+  "reference": "solutions/from-scratch-001.achuk"
 }

@@ -1,14 +1,14 @@
 [package]
-name = "claw-bench-grader"
+name = "achuk-bench-grader"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
-claw-core = { path = "../../crates/claw-core" }
-claw-cdb = { path = "../../cdb" }
-claw-effects = { path = "../../effects" }
-claw-contract = { path = "../../contract" }
+achuk-core = { path = "../../crates/achuk-core" }
+achuk-cdb = { path = "../../cdb" }
+achuk-effects = { path = "../../effects" }
+achuk-contract = { path = "../../contract" }
 serde = { workspace = true }
 anyhow = { workspace = true }
 

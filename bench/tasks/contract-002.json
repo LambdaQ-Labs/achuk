@@ -13,12 +13,12 @@
   ],
   "grade": {
     "compile": true,
-    "tests": ["tests/withdraw_spec.claw"],
+    "tests": ["tests/withdraw_spec.achuk"],
     "contracts": [
       "ok(result) => result.balance == account.balance - amt",
       "amt > account.balance => err(result)"
     ],
     "forbidden": ["hallucinated-symbol"]
   },
-  "reference": "solutions/contract-002.claw"
+  "reference": "solutions/contract-002.achuk"
 }

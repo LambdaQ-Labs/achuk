@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>How we built a programming language that AI can't lie in — the whole story</title>
-<meta name="description" content="From a one-line idea to a shipped language with its own AI, in a handful of days and about two dollars of GPU. The honest, fun, jargon-free story of building Claw.">
-<link rel="canonical" href="https://clawlang.dev/story.html">
+<meta name="description" content="From a one-line idea to a shipped language with its own AI, in a handful of days and about two dollars of GPU. The honest, fun, jargon-free story of building Achuk.">
+<link rel="canonical" href="https://achuk.dev/story.html">
 <meta property="og:type" content="article">
 <meta property="og:title" content="How we built a programming language that AI can't lie in">
 <meta property="og:description" content="From a one-line idea to a shipped language with its own AI — in days, for about two dollars of GPU. The honest, fun story.">
-<meta property="og:image" content="https://clawlang.dev/og.png">
+<meta property="og:image" content="https://achuk.dev/og.png">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M6 26 Q10 12 16 6 Q14 16 12 26 Z M13 26 Q17 13 23 7 Q20 17 18 26 Z M19 26 Q23 15 28 10 Q25 19 24 26 Z' fill='%23b45309'/%3E%3C/svg%3E">
 <style>
@@ -73,9 +73,9 @@ hr{border:none;border-top:1px solid var(--line);margin:44px 0}
   <div class="hwrap">
     <a class="logo" href="index.html">
       <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true"><path d="M6 26 Q10 12 16 6 Q14 16 12 26 Z M13 26 Q17 13 23 7 Q20 17 18 26 Z M19 26 Q23 15 28 10 Q25 19 24 26 Z" fill="#b45309"/></svg>
-      Claw
+      Achuk
     </a>
-    <nav><a href="index.html">Home</a><a href="docs.html">Docs</a><a href="playground.html">Playground</a><a href="https://github.com/LambdaQ-Labs/claw">GitHub</a></nav>
+    <nav><a href="index.html">Home</a><a href="docs.html">Docs</a><a href="playground.html">Playground</a><a href="https://github.com/LambdaQ-Labs/achuk">GitHub</a></nav>
   </div>
 </header>
 
@@ -109,7 +109,7 @@ its own tests — because the language checks all of it before you ever see the 
 <p>Building a compiler from scratch takes years. So we did the sensible thing and stood
 on giants' shoulders — we forked <a href="https://roc-lang.org">Roc</a>, a beautiful
 existing language whose design happens to make "what can this code touch?" a checkable
-question. We named ours <strong>Claw</strong> (Roc is a mythical giant bird; a claw is
+question. We named ours <strong>Achuk</strong> (Roc is a mythical giant bird; a achuk is
 what does the gripping). Then we got to work on the part nobody had done.</p>
 
 <h2><span class="n">Chapter 2</span>The four locked doors</h2>
@@ -146,7 +146,7 @@ world</em>, so AI models are worst at exactly the thing they'd be used for. Ever
 "AI-first language" died right here.</p>
 
 <p>Our escape was to <em>manufacture</em> the lessons. We wrote a generator that produces
-thousands of correct little Claw programs — guaranteed correct, because they're built
+thousands of correct little Achuk programs — guaranteed correct, because they're built
 from the rules rather than guessed. Then we rented a cloud GPU and taught a tiny AI
 model (small enough to run on any laptop, no internet, no API key) using them.</p>
 
@@ -172,16 +172,16 @@ what actually worked:</p>
 
 <table>
 <tr><th>language</th><th>how often the code worked</th></tr>
-<tr class="win"><td>Claw (after 3¢ of training)</td><td>94%</td></tr>
+<tr class="win"><td>Achuk (after 3¢ of training)</td><td>94%</td></tr>
 <tr><td>JavaScript (as-is)</td><td>89%</td></tr>
 <tr><td>Python (as-is)</td><td>56%</td></tr>
 <tr><td>Rust (as-is)</td><td>35%</td></tr>
 <tr><td>Go (as-is)</td><td>7%</td></tr>
 </table>
 
-<p>The same AI wrote 94%-correct Claw and 56%-correct Python. We reran the whole thing
+<p>The same AI wrote 94%-correct Achuk and 56%-correct Python. We reran the whole thing
 with a model <em>fourteen times bigger</em> to be sure it wasn't a fluke of small models —
-Claw still came first. That's the thesis, on the board, with the scoreboard attached and
+Achuk still came first. That's the thesis, on the board, with the scoreboard attached and
 the tools to reproduce it published.</p>
 
 <h2><span class="n">Chapter 5</span>The part where it becomes real</h2>
@@ -213,8 +213,8 @@ model, and the engine that runs it — everything, in a single command. Type thi
 fresh machine and, seconds later, an AI on your own laptop writes verified code with no
 key and no cloud:</p>
 
-<pre><span class="p">$</span> curl -fsSL https://clawlang.dev/install.sh | sh
-<span class="p">$</span> claw ai gen "define atleast10 that takes the bigger of x and 10"
+<pre><span class="p">$</span> curl -fsSL https://achuk.dev/install.sh | sh
+<span class="p">$</span> achuk ai gen "define atleast10 that takes the bigger of x and 10"
 ── generated ──  atleast10 = |p0| Nat.max(p0, 10)
 <span class="ok">── verified ── real compiler: OK</span></pre>
 
@@ -263,8 +263,8 @@ in the open, cheaply, and honestly, mistakes and all.</p>
 </article>
 
 <div class="foot">
-  <div class="wrap">Claw · LambdaQ Labs · built on <a href="https://roc-lang.org">Roc</a> ·
-  <a href="https://github.com/LambdaQ-Labs/claw">the whole thing is open source</a></div>
+  <div class="wrap">Achuk · LambdaQ Labs · built on <a href="https://roc-lang.org">Roc</a> ·
+  <a href="https://github.com/LambdaQ-Labs/achuk">the whole thing is open source</a></div>
 </div>
 
 </body>

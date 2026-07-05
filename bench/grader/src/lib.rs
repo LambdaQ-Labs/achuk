@@ -1,4 +1,4 @@
-//! claw-bench-grader — the deterministic grader (WS-J).
+//! achuk-bench-grader — the deterministic grader (WS-J).
 //!
 //! Grading is a pure function of (task, produced state). No model in the
 //! loop, reproducible, CI-runnable. Multi-signal: compile-shaped checks ∧
@@ -10,8 +10,8 @@
 mod exec;
 pub mod realc;
 
-use claw_cdb::Cdb;
-use claw_core::Def;
+use achuk_cdb::Cdb;
+use achuk_core::Def;
 use serde::{Deserialize, Serialize};
 
 pub use exec::{run_contracts, ContractRun};
@@ -46,7 +46,7 @@ pub struct GradeSpec {
     /// Must the produced code typecheck?
     #[serde(default = "default_true")]
     pub compile: bool,
-    /// Test oracles (paths to .claw test specs; executed once the compiler lands).
+    /// Test oracles (paths to .achuk test specs; executed once the compiler lands).
     #[serde(default)]
     pub tests: Vec<String>,
     /// Preconditions — filter the generated input cases during execution.
@@ -66,7 +66,7 @@ fn default_true() -> bool {
 
 /// A symbol seeded into the CDB before the task runs — the task's
 /// "repository context". Types use the signature syntax
-/// (`claw_core::parse::parse_type`).
+/// (`achuk_core::parse::parse_type`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScopeEntry {
     pub name: String,
@@ -116,7 +116,7 @@ impl Task {
     /// entry. Placeholder bodies (unique per name) — `candidates()` and
     /// hallucination detection only need names, types, and hashes.
     pub fn build_scope_cdb(&self) -> anyhow::Result<Cdb> {
-        use claw_core::{parse::parse_type, Expr, Lit};
+        use achuk_core::{parse::parse_type, Expr, Lit};
         let mut cdb = Cdb::in_memory()?;
         for entry in &self.scope {
             let ty = parse_type(&entry.ty)
@@ -237,7 +237,7 @@ pub fn grade(
     for pd in produced {
         // Propagate CDB errors (?) rather than swallowing them — a failed
         // check must not silently look like "no undeclared effects".
-        let chk = claw_effects::check_by_names(cdb, &pd.def)?;
+        let chk = achuk_effects::check_by_names(cdb, &pd.def)?;
         effect_unsound.extend(chk.undeclared);
     }
     effect_unsound.sort();
@@ -268,7 +268,7 @@ pub fn grade(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use claw_core::{Expr, Hash, Lit, Type};
+    use achuk_core::{Expr, Hash, Lit, Type};
 
     fn named(n: &str) -> Type {
         Type::Named(n.into())
@@ -418,7 +418,7 @@ mod tests {
     #[test]
     fn ungraded_tests_never_silently_pass() {
         let mut task = simple_task(vec![]);
-        task.grade.tests = vec!["tests/spec.claw".into()];
+        task.grade.tests = vec!["tests/spec.achuk".into()];
         let cdb = Cdb::in_memory().unwrap();
         let produced = Def::new(Expr::Lit(Lit::Int(9)), named("Nat"));
         let r = grade(&task, &[pd(produced)], &cdb, 0, 10).unwrap();
@@ -446,7 +446,7 @@ mod tests {
         let cdb = task.build_scope_cdb().unwrap();
         assert_eq!(cdb.symbols().unwrap().len(), 2);
         // type-directed lookup works over seeded scope
-        let q = claw_core::parse::parse_type("Nat, Nat -> a").unwrap();
+        let q = achuk_core::parse::parse_type("Nat, Nat -> a").unwrap();
         let found = cdb.candidates(&q).unwrap();
         assert_eq!(found.len(), 2);
     }
@@ -471,11 +471,11 @@ mod tests {
             "prompt": "Implement transfer respecting the Ledger invariant.",
             "grade": {
                 "compile": true,
-                "tests": ["tests/transfer_spec.claw"],
+                "tests": ["tests/transfer_spec.achuk"],
                 "contracts": ["from'.balance == from.balance - amt"],
                 "forbidden": ["unsafe", "hallucinated-symbol"]
             },
-            "reference": "solutions/wallet-transfer-001.claw"
+            "reference": "solutions/wallet-transfer-001.achuk"
         }"#;
         let t: Task = serde_json::from_str(json).unwrap();
         assert_eq!(t.id, "wallet-transfer-001");

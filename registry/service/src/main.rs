@@ -1,8 +1,8 @@
-//! claw-registry — a package registry for Claw (npmjs.com-style).
+//! achuk-registry — a package registry for Achuk (npmjs.com-style).
 //!
-//! Claw packages are content-addressed `.tar.zst` bundles (`claw bundle`
+//! Achuk packages are content-addressed `.tar.zst` bundles (`achuk bundle`
 //! names them by hash). This registry stores them by name+version, serves
-//! the raw bundle at a stable URL the Claw compiler can fetch (localhost
+//! the raw bundle at a stable URL the Achuk compiler can fetch (localhost
 //! downloads are allowed), and exposes metadata + a simple index.
 //!
 //! Storage: bundle blobs on disk (registry_data/blobs/<hash>.tar.zst),
@@ -36,12 +36,12 @@ mod ui;
 #[tokio::main]
 async fn main() {
     let db_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://ninad@localhost:5432/claw_registry".into());
+        .unwrap_or_else(|_| "postgres://ninad@localhost:5432/achuk_registry".into());
     let port: u16 = std::env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8888);
-    let base_url = std::env::var("CLAW_REGISTRY_URL")
+    let base_url = std::env::var("ACHUK_REGISTRY_URL")
         .unwrap_or_else(|_| format!("http://127.0.0.1:{port}"));
     let blobs = PathBuf::from(
-        std::env::var("CLAW_REGISTRY_DATA").unwrap_or_else(|_| "registry_data/blobs".into()),
+        std::env::var("ACHUK_REGISTRY_DATA").unwrap_or_else(|_| "registry_data/blobs".into()),
     );
     std::fs::create_dir_all(&blobs).expect("create blob dir");
 
@@ -78,7 +78,7 @@ async fn main() {
 
     let addr = format!("127.0.0.1:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await.expect("bind");
-    eprintln!("claw-registry on http://{addr}");
+    eprintln!("achuk-registry on http://{addr}");
     axum::serve(listener, app).await.unwrap();
 }
 
@@ -128,7 +128,7 @@ async fn publish(State(st): State<AppState>, mut mp: Multipart) -> ApiResult {
         err(
             StatusCode::BAD_REQUEST,
             "missing defs — packages must publish their definitions \
-             (claw publish generates these; update your claw CLI)",
+             (achuk publish generates these; update your achuk CLI)",
         )
     })?;
     let defs: Vec<serde_json::Value> = serde_json::from_slice(&defs_bytes)
@@ -142,12 +142,12 @@ async fn publish(State(st): State<AppState>, mut mp: Multipart) -> ApiResult {
         if n.is_empty() {
             return Err(err(StatusCode::BAD_REQUEST, "a def is missing its name"));
         }
-        claw_core::parse::parse_type(t).map_err(|e| {
+        achuk_core::parse::parse_type(t).map_err(|e| {
             err(StatusCode::BAD_REQUEST, format!("def `{n}` has an unparseable type `{t}`: {e}"))
         })?;
     }
 
-    // Hash = the bundle's base filename (content-addressed by `claw bundle`).
+    // Hash = the bundle's base filename (content-addressed by `achuk bundle`).
     let hash = filename.trim_end_matches(".tar.zst").to_string();
 
     std::fs::write(st.blobs.join(&filename), &bytes)
@@ -201,7 +201,7 @@ async fn package_meta(State(st): State<AppState>, Path(name): Path<String>) -> A
     Ok(Json(json!({ "name": name, "latest": latest, "versions": versions })))
 }
 
-/// `GET /b/:filename` — the raw bundle. This is the URL the Claw compiler
+/// `GET /b/:filename` — the raw bundle. This is the URL the Achuk compiler
 /// downloads (and verifies against the hash in the filename).
 /// `GET /defs/:name/:version` — the package's definitions for the
 /// consumer's code database (the MCP-compatibility payload).

@@ -2,7 +2,7 @@
 //!
 //! When a task declares scalar `params`, the grader can actually *run* the
 //! produced definition: generate input tuples, apply the produced lambda
-//! via the claw-core interpreter, bind (params, result) into a contract
+//! via the achuk-core interpreter, bind (params, result) into a contract
 //! environment, and evaluate the `ensures` predicates. This turns
 //! "compiles" into "provably does the right thing on N cases" — the
 //! difference a skeptic asks for.
@@ -13,9 +13,9 @@
 //! silently passed).
 
 use crate::{Param, ProducedDef};
-use claw_contract::{eval_pred, parse_pred, Value as CValue};
-use claw_core::interp::{eval as run, Env, Resolver, Value as IValue};
-use claw_core::{Expr, Hash};
+use achuk_contract::{eval_pred, parse_pred, Value as CValue};
+use achuk_core::interp::{eval as run, Env, Resolver, Value as IValue};
+use achuk_core::{Expr, Hash};
 use std::collections::BTreeMap;
 
 /// Resolver over scope names → builtins. Produced code references scope
@@ -100,7 +100,7 @@ pub fn run_contracts(
         Err(_) => return ContractRun::Skipped,
     };
 
-    let cases = claw_contract::generate_cases(&pnames, 6, &req_preds);
+    let cases = achuk_contract::generate_cases(&pnames, 6, &req_preds);
     if cases.is_empty() {
         return ContractRun::Skipped;
     }
@@ -123,7 +123,7 @@ pub fn run_contracts(
             args: args
                 .iter()
                 .map(|v| match v {
-                    IValue::Int(n) => Expr::Lit(claw_core::Lit::Int(*n)),
+                    IValue::Int(n) => Expr::Lit(achuk_core::Lit::Int(*n)),
                     _ => unreachable!(),
                 })
                 .collect(),
@@ -155,7 +155,7 @@ pub fn run_contracts(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use claw_core::{Def, Expr, Type};
+    use achuk_core::{Def, Expr, Type};
 
     fn pd_lam(body: Expr, params: &[&str]) -> ProducedDef {
         ProducedDef {

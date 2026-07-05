@@ -12,12 +12,12 @@
   ],
   "grade": {
     "compile": true,
-    "tests": ["tests/insert_sorted_spec.claw"],
+    "tests": ["tests/insert_sorted_spec.achuk"],
     "contracts": [
       "sorted(input) => sorted(result)",
       "List.len(result) == List.len(input) + 1"
     ],
     "forbidden": ["hallucinated-symbol"]
   },
-  "reference": "solutions/contract-001.claw"
+  "reference": "solutions/contract-001.achuk"
 }

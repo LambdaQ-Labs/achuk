@@ -2,7 +2,7 @@
 //! scope must build into a CDB. A task that drifts from the schema fails
 //! CI here — loudly, not at run time.
 
-use claw_bench_grader::Task;
+use achuk_bench_grader::Task;
 use std::path::PathBuf;
 
 fn tasks_dir() -> PathBuf {

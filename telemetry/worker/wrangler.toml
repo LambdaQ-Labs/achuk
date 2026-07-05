@@ -1,9 +1,9 @@
-name = "claw-telemetry"
+name = "achuk-telemetry"
 main = "index.js"
 compatibility_date = "2026-07-01"
-routes = [{ pattern = "telemetry.clawlang.dev", custom_domain = true }]
+routes = [{ pattern = "telemetry.achuk.dev", custom_domain = true }]
 
-# R2 binding — create with: wrangler r2 bucket create claw-telemetry
+# R2 binding — create with: wrangler r2 bucket create achuk-telemetry
 [[r2_buckets]]
 binding = "TELEMETRY"
-bucket_name = "claw-telemetry"
+bucket_name = "achuk-telemetry"

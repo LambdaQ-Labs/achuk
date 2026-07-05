@@ -1,7 +1,7 @@
 {
  "id": "ho-py-relu",
  "category": "translate",
- "prompt": "Port this Python to Claw:\n\ndef relu(x, threshold):\n    return max(x - threshold, 0)\n\nTarget `relu` : Nat, Nat -> Nat (p0 = x, p1 = threshold). Nat subtraction already saturates at zero, and there is no zero literal needed if you rely on that.",
+ "prompt": "Port this Python to Achuk:\n\ndef relu(x, threshold):\n    return max(x - threshold, 0)\n\nTarget `relu` : Nat, Nat -> Nat (p0 = x, p1 = threshold). Nat subtraction already saturates at zero, and there is no zero literal needed if you rely on that.",
  "scope": [
   {
    "name": "Nat.add",

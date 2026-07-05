@@ -50,13 +50,13 @@ jobs:
         run: |
           set -euo pipefail
           tmp="$(mktemp -d)"
-          tar -xzf dist/claw-${{ steps.ver.outputs.version }}-${{ matrix.target }}.tar.gz -C "$tmp"
-          "$tmp/bin/claw" --version
-          ( cd "$tmp" && ./bin/claw new demo && cd demo && ../bin/claw run )
+          tar -xzf dist/achuk-${{ steps.ver.outputs.version }}-${{ matrix.target }}.tar.gz -C "$tmp"
+          "$tmp/bin/achuk" --version
+          ( cd "$tmp" && ./bin/achuk new demo && cd demo && ../bin/achuk run )
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.ver.outputs.version }}
-          files: dist/claw-*-*.tar.gz
+          files: dist/achuk-*-*.tar.gz
           fail_on_unmatched_files: true

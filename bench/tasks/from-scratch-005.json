@@ -6,6 +6,6 @@
     { "name": "List.len", "ty": "List a -> Nat" },
     { "name": "Nat.isZero", "ty": "Nat -> Bool" }
   ],
-  "grade": { "compile": true, "tests": ["tests/is_empty_spec.claw"], "contracts": [], "forbidden": ["hallucinated-symbol"] },
-  "reference": "solutions/from-scratch-005.claw"
+  "grade": { "compile": true, "tests": ["tests/is_empty_spec.achuk"], "contracts": [], "forbidden": ["hallucinated-symbol"] },
+  "reference": "solutions/from-scratch-005.achuk"
 }

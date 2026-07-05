@@ -1,7 +1,7 @@
 {
  "id": "ho-larger",
  "category": "from-scratch",
- "prompt": "Write a Claw function `larger` : Nat, Nat -> Nat. Given two numbers (parameters p0, p1), it should give back whichever one is bigger.",
+ "prompt": "Write a Achuk function `larger` : Nat, Nat -> Nat. Given two numbers (parameters p0, p1), it should give back whichever one is bigger.",
  "scope": [
   {
    "name": "Nat.add",

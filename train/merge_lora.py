@@ -4,7 +4,7 @@
 llama.cpp consumes a plain HF checkpoint; PEFT adapters must be folded in
 first (merge_and_unload). Output: ./merged (model + tokenizer).
 
-    python merge_lora.py            # expects ./claw-lora
+    python merge_lora.py            # expects ./achuk-lora
 """
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -14,7 +14,7 @@ BASE = "Qwen/Qwen2.5-Coder-0.5B-Instruct"
 
 tok = AutoTokenizer.from_pretrained(BASE)
 m = AutoModelForCausalLM.from_pretrained(BASE, torch_dtype=torch.float16)
-m = PeftModel.from_pretrained(m, "claw-lora")
+m = PeftModel.from_pretrained(m, "achuk-lora")
 m = m.merge_and_unload()
 m.save_pretrained("merged")
 tok.save_pretrained("merged")

@@ -169,7 +169,7 @@ pub fn def_json_grammar(mask: &[Continuation]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use claw_core::{Hash, Type};
+    use achuk_core::{Hash, Type};
     use std::collections::BTreeMap;
 
     fn cont(name: &str) -> Continuation {

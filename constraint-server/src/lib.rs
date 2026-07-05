@@ -1,4 +1,4 @@
-//! claw-constraint — the generation-constraint core (WS-C).
+//! achuk-constraint — the generation-constraint core (WS-C).
 //!
 //! Given a typed hole (cursor + expected type), compute the set of legal
 //! continuations: real, in-scope, non-deprecated definitions whose types
@@ -15,11 +15,11 @@
 pub mod gbnf;
 
 #[cfg(feature = "cdb")]
-use claw_cdb::{Cdb, Result};
-use claw_core::{Hash, Subst, Type};
-use claw_diagnostics::Diagnostic;
+use achuk_cdb::{Cdb, Result};
+use achuk_core::{Hash, Subst, Type};
+use achuk_diagnostics::Diagnostic;
 #[cfg(feature = "cdb")]
-use claw_diagnostics::{Category, Loc};
+use achuk_diagnostics::{Category, Loc};
 use serde::{Deserialize, Serialize};
 
 /// A typed hole: where generation is happening and what must go there.
@@ -111,7 +111,7 @@ pub fn legal_continuations(cdb: &Cdb, hole: &HoleContext) -> Result<Mask> {
 #[cfg(all(test, feature = "cdb"))]
 mod tests {
     use super::*;
-    use claw_core::{Def, Expr, Lit};
+    use achuk_core::{Def, Expr, Lit};
 
     fn named(n: &str) -> Type {
         Type::Named(n.into())

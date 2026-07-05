@@ -7,9 +7,9 @@
   ],
   "grade": {
     "compile": true,
-    "tests": ["tests/greet_spec.claw"],
+    "tests": ["tests/greet_spec.achuk"],
     "contracts": [],
     "forbidden": ["hallucinated-symbol"]
   },
-  "reference": "solutions/from-scratch-002.claw"
+  "reference": "solutions/from-scratch-002.achuk"
 }

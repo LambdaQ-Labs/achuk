@@ -1,12 +1,12 @@
-# Claw — Syntax Sketch
+# Achuk — Syntax Sketch
 
-*Illustrative, not final. Goal: show how contracts, effects/capabilities, code-as-database editing, and structured errors feel in real `.claw` programs. Surface derives from Roc (whitespace-light, ML-family, no borrow checker). File ext `.claw`, CLI `claw`.*
+*Illustrative, not final. Goal: show how contracts, effects/capabilities, code-as-database editing, and structured errors feel in real `.achuk` programs. Surface derives from Roc (whitespace-light, ML-family, no borrow checker). File ext `.achuk`, CLI `achuk`.*
 
 ---
 
 ## 1. Hello + basics
 
-```claw
+```achuk
 # module declaration
 module hello
 
@@ -26,7 +26,7 @@ main = \{} ->
 
 Contracts sit *next to* the impl. `requires`/`ensures`/`example`. Machine-checked where decidable, property-tested otherwise.
 
-```claw
+```achuk
 transfer : Account, Account, Nat -> Result Ledger TransferErr
   requires amt <= from.balance                      # precondition
   ensures  ok(result) => from'.balance == from.balance - amt   # postcondition (' = post-state)
@@ -38,7 +38,7 @@ transfer = \from, to, amt ->
         Ok left -> Ok (Ledger.of { from: left, to: to.balance + amt })
 ```
 
-If the body could violate a postcondition, `claw check` fails *before* runtime — catching intent misalignment, not just type errors.
+If the body could violate a postcondition, `achuk check` fails *before* runtime — catching intent misalignment, not just type errors.
 
 ---
 
@@ -46,7 +46,7 @@ If the body could violate a postcondition, `claw check` fails *before* runtime �
 
 Effects are in the signature. Nothing does I/O without a **capability** passed in. Sharpened from Roc platforms.
 
-```claw
+```achuk
 # The [Read, Net] effect row is inferred and shown. `cap:` = required capabilities.
 fetchUser : UserId -> Task User [Net, Read]
   with cap: { http: HttpGet, db: DbRead }
@@ -65,7 +65,7 @@ fetchUser = \id ->
 
 Running under a restricted capability set = the autonomous-agent sandbox:
 
-```claw
+```achuk
 # grant only DB read; no network. fetchUser won't type-check to run here.
 runSandboxed : Task a effects -> Result a CapErr
   where effects <= [Read]        # compile error if the task needs Net
@@ -79,18 +79,18 @@ The agent doesn't open files. It queries and patches definitions.
 
 ```
 # what's expected + available at this hole?
-$ claw db type-at transfer:body
+$ achuk db type-at transfer:body
   expected: Result Ledger TransferErr
-$ claw db candidates "Nat -> Nat -> Result Nat _" scope=transfer
+$ achuk db candidates "Nat -> Nat -> Result Nat _" scope=transfer
   Nat.checkedSub   (#a1f3)   Nat, Nat -> Result Nat MathErr
   Nat.saturatingSub(#0c9e)   Nat, Nat -> Nat            # note: no error channel
 
 # agent picks the real symbol #a1f3 (can't hallucinate one that isn't listed)
-$ claw db put --def transfer <ast>
+$ achuk db put --def transfer <ast>
   #7b2e  transfer : Account, Account, Nat -> Result Ledger TransferErr   ✓ checks
 
 # rename is O(1) metadata — callers reference #7b2e, not the name
-$ claw db bind Ledger.transfer #7b2e
+$ achuk db bind Ledger.transfer #7b2e
 ```
 
 Because `candidates` only returns real, in-scope, type-fitting symbols, the model **cannot emit `generate_nonce()`** if no such definition exists — API hallucination is structurally impossible, not merely caught.
@@ -102,7 +102,7 @@ Because `candidates` only returns real, in-scope, type-fitting symbols, the mode
 Prose is a rendering; the struct is the source of truth the agent consumes.
 
 ```
-$ claw check transfer
+$ achuk check transfer
 ```
 ```json
 {
@@ -126,7 +126,7 @@ Agent reads `patches[0]`, applies, re-`put`s, re-checks. No prose parsing.
 
 ## 6. Interop — inherit the Rust ecosystem (WS-G)
 
-```claw
+```achuk
 # call a real Rust crate through FFI; effects + types declared at the boundary
 extern rust "sha2" {
     sha256 : Bytes -> Bytes  [] # pure
@@ -135,13 +135,13 @@ extern rust "sha2" {
 digest = \data -> sha256 data
 ```
 
-And any Claw module compiles out via `claw build --emit=rust`, so the outside world consumes Claw as a normal Rust dependency. No "roll your own auth" ecosystem death.
+And any Achuk module compiles out via `achuk build --emit=rust`, so the outside world consumes Achuk as a normal Rust dependency. No "roll your own auth" ecosystem death.
 
 ---
 
 ## 7. Putting it together — a tiny agent-authored module
 
-```claw
+```achuk
 module wallet
 
 Account : { id: UserId, balance: Nat }

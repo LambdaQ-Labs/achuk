@@ -1,4 +1,4 @@
-//! Claw `sys` platform host — a self-contained host (std/builtin only) that
+//! Achuk `sys` platform host — a self-contained host (std/builtin only) that
 //! provides real I/O effects: File.read!, Env.get!, Stdout.line!.
 //! Builds with a bare `zig build-lib host.zig`. ABI modeled on
 //! src/default_platform/c_runtime.zig + test/fx-open (entry + List args).
@@ -22,48 +22,48 @@ const c = struct {
 
 const AllocationHeader = extern struct { raw: [*]u8, len: usize };
 
-const ClawStr = extern struct {
+const AchukStr = extern struct {
     bytes: ?[*]u8,
     capacity_or_alloc_ptr: usize,
     length: usize,
 
-    fn isSmallStr(self: ClawStr) bool {
+    fn isSmallStr(self: AchukStr) bool {
         return @as(isize, @bitCast(self.length)) < 0;
     }
-    fn isSeamlessSlice(self: ClawStr) bool {
+    fn isSeamlessSlice(self: AchukStr) bool {
         return !self.isSmallStr() and (self.capacity_or_alloc_ptr & seamless_slice_tag) == seamless_slice_tag;
     }
-    fn len(self: ClawStr) usize {
+    fn len(self: AchukStr) usize {
         if (self.isSmallStr()) {
-            const raw: *const [@sizeOf(ClawStr)]u8 = @ptrCast(&self);
-            return raw.*[@sizeOf(ClawStr) - 1] ^ 0b1000_0000;
+            const raw: *const [@sizeOf(AchukStr)]u8 = @ptrCast(&self);
+            return raw.*[@sizeOf(AchukStr) - 1] ^ 0b1000_0000;
         }
         return self.length;
     }
-    fn allocationPtr(self: ClawStr) ?[*]u8 {
+    fn allocationPtr(self: AchukStr) ?[*]u8 {
         if (self.isSmallStr()) return null;
         if (self.isSeamlessSlice()) return @ptrFromInt(self.capacity_or_alloc_ptr & ~seamless_slice_tag);
         return self.bytes;
     }
-    fn asSlice(self: *const ClawStr) []const u8 {
+    fn asSlice(self: *const AchukStr) []const u8 {
         const ptr: [*]const u8 = if (self.isSmallStr()) @ptrCast(self) else @ptrCast(self.bytes.?);
         return ptr[0..self.len()];
     }
-    fn decref(self: *ClawStr) void {
+    fn decref(self: *AchukStr) void {
         const data = self.allocationPtr() orelse return;
         const refcount_ptr: *isize = @ptrCast(@alignCast(data - @sizeOf(usize)));
         if (refcount_ptr.* == 0) return;
         const last = @atomicRmw(isize, refcount_ptr, .Sub, 1, .monotonic);
         if (last == 1) roc_dealloc(data - @sizeOf(usize), @alignOf(usize));
     }
-    /// Build a ClawStr that Claw owns (refcount 1) from a byte slice.
-    fn fromSlice(slice: []const u8) ClawStr {
-        if (slice.len < @sizeOf(ClawStr)) {
+    /// Build a AchukStr that Achuk owns (refcount 1) from a byte slice.
+    fn fromSlice(slice: []const u8) AchukStr {
+        if (slice.len < @sizeOf(AchukStr)) {
             // small-string: payload inline, last byte = len | 0x80
-            var result: ClawStr = .{ .bytes = null, .capacity_or_alloc_ptr = 0, .length = 0 };
+            var result: AchukStr = .{ .bytes = null, .capacity_or_alloc_ptr = 0, .length = 0 };
             const out: [*]u8 = @ptrCast(&result);
             for (0..slice.len) |i| out[i] = slice[i];
-            out[@sizeOf(ClawStr) - 1] = @intCast(slice.len | 0b1000_0000);
+            out[@sizeOf(AchukStr) - 1] = @intCast(slice.len | 0b1000_0000);
             return result;
         }
         // big: [refcount:usize][data...]; bytes points past the refcount word.
@@ -79,35 +79,35 @@ const ClawStr = extern struct {
 };
 
 /// List layout: { bytes, length, capacity_or_alloc_ptr } (note field order
-/// differs from ClawStr).
-const ClawList = extern struct {
+/// differs from AchukStr).
+const AchukList = extern struct {
     bytes: ?[*]u8,
     length: usize,
     capacity_or_alloc_ptr: usize,
-    fn empty() ClawList {
+    fn empty() AchukList {
         return .{ .bytes = null, .length = 0, .capacity_or_alloc_ptr = 0 };
     }
 };
 
 // --- the app entry point -------------------------------------------------
 // main_for_host! : List(Str) => I32 (the Try is collapsed to i32 in main.roc)
-extern fn roc_main(args: ClawList) callconv(.c) i32;
+extern fn roc_main(args: AchukList) callconv(.c) i32;
 
 export fn main() callconv(.c) c_int {
     // Args unused by the sys demo; pass an empty List(Str).
-    return roc_main(ClawList.empty());
+    return roc_main(AchukList.empty());
 }
 
 // --- hosted effects ------------------------------------------------------
 
-export fn roc_stdout_line(str: ClawStr) callconv(.c) void {
+export fn roc_stdout_line(str: AchukStr) callconv(.c) void {
     var owned = str;
     writeAll(1, owned.asSlice());
     writeAll(1, "\n");
     owned.decref();
 }
 
-export fn roc_env_get(name: ClawStr) callconv(.c) ClawStr {
+export fn roc_env_get(name: AchukStr) callconv(.c) AchukStr {
     var owned = name;
     var buf: [256]u8 = undefined;
     const n = owned.asSlice();
@@ -115,13 +115,13 @@ export fn roc_env_get(name: ClawStr) callconv(.c) ClawStr {
     for (0..nlen) |i| buf[i] = n[i];
     buf[nlen] = 0;
     owned.decref();
-    const val = c.getenv(@ptrCast(&buf)) orelse return ClawStr.fromSlice("");
+    const val = c.getenv(@ptrCast(&buf)) orelse return AchukStr.fromSlice("");
     var vlen: usize = 0;
     while (val[vlen] != 0) : (vlen += 1) {}
-    return ClawStr.fromSlice(val[0..vlen]);
+    return AchukStr.fromSlice(val[0..vlen]);
 }
 
-export fn roc_file_read(path: ClawStr) callconv(.c) ClawStr {
+export fn roc_file_read(path: AchukStr) callconv(.c) AchukStr {
     var owned = path;
     var pbuf: [1024]u8 = undefined;
     const p = owned.asSlice();
@@ -130,17 +130,17 @@ export fn roc_file_read(path: ClawStr) callconv(.c) ClawStr {
     pbuf[plen] = 0;
     owned.decref();
 
-    const f = c.fopen(@ptrCast(&pbuf), "rb") orelse return ClawStr.fromSlice("");
+    const f = c.fopen(@ptrCast(&pbuf), "rb") orelse return AchukStr.fromSlice("");
     defer _ = c.fclose(f);
-    if (c.fseek(f, 0, 2) != 0) return ClawStr.fromSlice(""); // SEEK_END
+    if (c.fseek(f, 0, 2) != 0) return AchukStr.fromSlice(""); // SEEK_END
     const size = c.ftell(f);
-    if (size <= 0) return ClawStr.fromSlice("");
+    if (size <= 0) return AchukStr.fromSlice("");
     _ = c.fseek(f, 0, 0); // SEEK_SET
     const usize_size: usize = @intCast(size);
-    const heap_any = roc_alloc(usize_size, @alignOf(usize)) orelse return ClawStr.fromSlice("");
+    const heap_any = roc_alloc(usize_size, @alignOf(usize)) orelse return AchukStr.fromSlice("");
     const heap: [*]u8 = @ptrCast(heap_any);
     const got = c.fread(heap, 1, usize_size, f);
-    const result = ClawStr.fromSlice(heap[0..got]);
+    const result = AchukStr.fromSlice(heap[0..got]);
     roc_dealloc(heap_any, @alignOf(usize));
     return result;
 }
@@ -152,13 +152,13 @@ export fn roc_dbg(bytes: [*]const u8, len: usize) callconv(.c) void {
     writeAll(2, "\n");
 }
 export fn roc_expect_failed(bytes: [*]const u8, len: usize) callconv(.c) noreturn {
-    writeAll(2, "Claw expect failed: ");
+    writeAll(2, "Achuk expect failed: ");
     writeAll(2, bytes[0..len]);
     writeAll(2, "\n");
     c.exit(1);
 }
 export fn roc_crashed(bytes: [*]const u8, len: usize) callconv(.c) noreturn {
-    writeAll(2, "Claw crashed: ");
+    writeAll(2, "Achuk crashed: ");
     writeAll(2, bytes[0..len]);
     writeAll(2, "\n");
     c.exit(1);

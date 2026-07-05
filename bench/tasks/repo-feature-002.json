@@ -11,9 +11,9 @@
   ],
   "grade": {
     "compile": true,
-    "tests": ["tests/lookup_or_fetch_spec.claw"],
+    "tests": ["tests/lookup_or_fetch_spec.achuk"],
     "contracts": [],
     "forbidden": ["hallucinated-symbol"]
   },
-  "reference": "solutions/repo-feature-002.claw"
+  "reference": "solutions/repo-feature-002.achuk"
 }

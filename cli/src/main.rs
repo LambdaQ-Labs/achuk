@@ -69,6 +69,9 @@ fn real_main() -> anyhow::Result<()> {
         Some("task-grammar") => task_grammar_cmd(&args[1..]),
         // Opt-in usage capture (off unless CLAW_TELEMETRY is set).
         Some("telemetry") => telemetry_cmd(&args[1..]),
+        // Full grade (compile proxy + contract EXECUTION) as JSON — the
+        // Claw side of the cross-language parity harness.
+        Some("defs-grade") => defs_grade_cmd(&args[1..]),
         // WS-H: generate a synthetic SFT corpus (JSONL). `--stdlib` uses the
         // built-in stdlib scope; otherwise reads the CDB at --db.
         Some("corpus") if args.get(1).map(String::as_str) == Some("gen") => {
@@ -314,6 +317,20 @@ fn defs_check_cmd(args: &[String]) -> anyhow::Result<()> {
     } else {
         println!("COMPILE-FAIL ({} errors)\n{}", r.errors, r.detail);
     }
+    Ok(())
+}
+
+/// `claw defs-grade <defs.json> <task.json>` — grade produced defs against
+/// a task (hallucination check + executed contracts) and print the
+/// GradeResult as JSON. The parity harness consumes this.
+fn defs_grade_cmd(args: &[String]) -> anyhow::Result<()> {
+    use claw_bench_grader::{grade, ProducedDef, Task};
+    let defs: Vec<ProducedDef> =
+        serde_json::from_str(&std::fs::read_to_string(need(args, 0, "defs.json")?)?)?;
+    let task: Task = serde_json::from_str(&std::fs::read_to_string(need(args, 1, "task.json")?)?)?;
+    let cdb = task.build_scope_cdb()?;
+    let r = grade(&task, &defs, &cdb, 0, 0)?;
+    println!("{}", serde_json::to_string(&r)?);
     Ok(())
 }
 

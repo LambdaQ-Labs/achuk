@@ -65,9 +65,17 @@ Known requirements / cleanups before the public tag:
 - **Linux `claw run` needs a system linker** (`gcc` or `binutils`) — the
   compiler's link step shells out. `claw check` needs nothing. Document
   in install.sh output or vendor a linker later.
-- **clawc ships as a debug build** ("version debug-no-git", 300+ MB):
-  switch to release mode + strip and wire git version info — sizes drop
-  dramatically.
+- ~~clawc ships as a debug build~~ **Done**: artifacts are ReleaseFast
+  with git version stamps (`release-fast-<hash>`); linux tarball dropped
+  323→85 MB, macOS 161→72 MB, windows 88→58 MB.
+- **zig 0.16.0's x86_64-linux toolchain SEGVs building clawc at ANY
+  optimize level** (ReleaseFast/Safe/Small, -j1, 188 GB RAM box — upstream
+  bug; debug builds fine; zig master rejects the build script for other
+  reasons). Workaround shipped: cross-compile the linux and windows
+  compilers FROM arm64 macOS (`zig build roc -Dtarget=x86_64-linux-musl
+  -Doptimize=ReleaseFast` — build-time tools then run natively on arm64).
+  The Drone linux pipeline is affected the same way — until a fixed zig
+  lands, release clawc for linux/windows comes from a mac cross-build.
 - Cross-building the compiler is impossible under qemu emulation (the
   build-time builtin_compiler miscomputes) — build on real hardware per
   target family, as the Drone runners do.

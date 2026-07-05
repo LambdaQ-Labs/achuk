@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claw documentation — install, the AI, packages, CLI reference</title>
+<meta name="description" content="Everything you need to use Claw: one-command install, claw ai (generate verified code), the code database, MCP setup for Claude/Cursor, publishing packages, and the full CLI reference.">
+<link rel="canonical" href="https://clawlang.dev/docs.html">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M6 26 Q10 12 16 6 Q14 16 12 26 Z M13 26 Q17 13 23 7 Q20 17 18 26 Z M19 26 Q23 15 28 10 Q25 19 24 26 Z' fill='%23b45309'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#faf7f2; --panel:#ffffff; --panel2:#f1ece4; --line:#e5ddd0;
+  --ink:#292420; --dim:#6b6259; --acc:#ea580c; --acc2:#c2410c;
+  --copper:#b45309; --good:#15803d; --bad:#b91c1c;
+  --mono:ui-monospace,'SF Mono','Cascadia Code',Menlo,Consolas,monospace;
+  --sans:'Avenir Next','Segoe UI Variable','Segoe UI',-apple-system,BlinkMacSystemFont,sans-serif;
+}
+@media(prefers-color-scheme:dark){
+  :root{--bg:#151210;--panel:#201b17;--panel2:#1a1613;--line:#332c25;
+  --ink:#ede9e4;--dim:#a39a8e;--acc:#fb923c;--acc2:#fdba74;--copper:#e08a2e;--good:#4ade80;--bad:#f87171}
+}
+:root[data-theme="light"]{--bg:#faf7f2;--panel:#ffffff;--panel2:#f1ece4;--line:#e5ddd0;--ink:#292420;--dim:#6b6259;--acc:#ea580c;--acc2:#c2410c;--copper:#b45309;--good:#15803d;--bad:#b91c1c}
+:root[data-theme="dark"]{--bg:#151210;--panel:#201b17;--panel2:#1a1613;--line:#332c25;--ink:#ede9e4;--dim:#a39a8e;--acc:#fb923c;--acc2:#fdba74;--copper:#e08a2e;--good:#4ade80;--bad:#f87171}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:70px}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.7}
+a{color:var(--acc);text-decoration:none} a:hover{text-decoration:underline}
+a:focus-visible{outline:2px solid var(--copper);outline-offset:2px}
+header{padding:14px 0;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
+.hwrap{max-width:1180px;margin:0 auto;padding:0 22px;display:flex;align-items:center;gap:10px}
+.logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:18px;color:var(--ink)}
+header nav{margin-left:auto;display:flex;gap:18px;font-size:14px}
+header nav a{color:var(--dim)}
+.layout{max-width:1180px;margin:0 auto;padding:0 22px;display:grid;grid-template-columns:230px 1fr;gap:44px}
+@media(max-width:860px){.layout{grid-template-columns:1fr}.side{position:static;max-height:none;border:1px solid var(--line);border-radius:10px;padding:16px;margin-top:20px}}
+.side{position:sticky;top:70px;align-self:start;max-height:calc(100vh - 90px);overflow-y:auto;padding:28px 0 40px;font-size:14px}
+.side h4{font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--copper);margin:18px 0 6px;font-family:var(--mono)}
+.side a{display:block;color:var(--dim);padding:3.5px 0}
+.side a:hover{color:var(--acc);text-decoration:none}
+main{padding:28px 0 80px;min-width:0}
+h1{font-size:32px;letter-spacing:-.02em;margin-bottom:8px}
+.lead{color:var(--dim);font-size:17px;max-width:44em;margin-bottom:14px}
+section{margin-top:52px;border-top:1px solid var(--line);padding-top:28px}
+h2{font-size:24px;letter-spacing:-.015em;margin-bottom:12px}
+h3{font-size:17.5px;margin:26px 0 8px}
+p{margin:10px 0;max-width:46em;color:var(--ink)}
+p.note,li{color:var(--ink)}
+ul,ol{margin:10px 0 10px 22px;max-width:44em}
+li{margin:5px 0}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;font-family:var(--mono);font-size:13.5px;line-height:1.65;overflow-x:auto;margin:14px 0}
+code{font-family:var(--mono);font-size:.92em;background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:1px 5px}
+pre code{background:none;border:none;padding:0}
+pre .c{color:var(--dim)} pre .p{color:var(--acc)} pre .ok{color:var(--good)} pre .bad{color:var(--bad)}
+table{width:100%;border-collapse:collapse;font-size:14.5px;margin:14px 0;font-variant-numeric:tabular-nums;display:block;overflow-x:auto}
+th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+td:last-child{white-space:normal;min-width:220px}
+th{color:var(--dim);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+tr.win td{color:var(--good);font-weight:600}
+.callout{background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--copper);border-radius:8px;padding:14px 18px;margin:16px 0;max-width:46em}
+.callout p{margin:4px 0}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hwrap">
+    <a class="logo" href="index.html">
+      <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true"><path d="M6 26 Q10 12 16 6 Q14 16 12 26 Z M13 26 Q17 13 23 7 Q20 17 18 26 Z M19 26 Q23 15 28 10 Q25 19 24 26 Z" fill="#b45309"/></svg>
+      Claw <span style="color:var(--dim);font-weight:400">Docs</span>
+    </a>
+    <nav><a href="index.html">Home</a><a href="playground.html">Playground</a><a href="https://github.com/LambdaQ-Labs/claw">GitHub</a></nav>
+  </div>
+</header>
+
+<div class="layout">
+<nav class="side" aria-label="Documentation">
+  <h4>Start</h4>
+  <a href="#install">Install</a>
+  <a href="#quickstart">Quick start</a>
+  <a href="#language">The language</a>
+  <h4>The AI</h4>
+  <a href="#ai">claw ai</a>
+  <a href="#how-it-works">The four gates</a>
+  <a href="#mcp">Claude, Cursor &amp; MCP</a>
+  <h4>Ecosystem</h4>
+  <a href="#packages">Packages</a>
+  <a href="#editors">Editor support</a>
+  <a href="#codedb">The code database</a>
+  <h4>Reference</h4>
+  <a href="#cli">CLI reference</a>
+  <a href="#telemetry">Telemetry &amp; privacy</a>
+  <a href="#numbers">The numbers</a>
+  <a href="#deeper">Going deeper</a>
+</nav>
+
+<main>
+<h1>Claw documentation</h1>
+<p class="lead">Everything in one download: the compiler, the tooling, an AI model
+fine-tuned to write Claw, and the guardrails that verify every line it produces.</p>
+
+<section id="install">
+<h2>Install</h2>
+<pre>curl -fsSL https://clawlang.dev/install.sh | sh</pre>
+<p>One command, no sudo, no system dependencies. It installs to <code>~/.claw</code> and puts
+<code>claw</code> on your PATH. The bundle includes:</p>
+<ul>
+  <li><code>claw</code> — the CLI (build, run, packages, AI)</li>
+  <li><code>clawc</code> — the compiler (100–200&nbsp;ms typechecks)</li>
+  <li><code>claw-mcp</code> — the MCP server for AI assistants</li>
+  <li><code>claw-lsp</code> — editor language server</li>
+  <li><code>claw-infer</code> + <code>model/claw-0.5b-q8.gguf</code> — the bundled AI model and its inference engine</li>
+</ul>
+<p>Update any time with <code>claw upgrade</code>. Windows: download the zip from
+<a href="https://github.com/LambdaQ-Labs/claw/releases">GitHub Releases</a> and add <code>bin\</code> to PATH.</p>
+<div class="callout"><p><b>Linux note:</b> <code>claw run</code> (compile-and-execute) needs a system
+linker — <code>apt install binutils</code> covers it. <code>claw check</code> and everything else need nothing.</p></div>
+</section>
+
+<section id="quickstart">
+<h2>Quick start</h2>
+<pre><span class="p">$</span> claw new hello --platform cli
+<span class="p">$</span> cd hello
+<span class="p">$</span> claw run main.claw
+Hello, world!
+
+<span class="p">$</span> claw check main.claw     <span class="c"># typecheck only — ~100 ms</span>
+<span class="p">$</span> claw fmt main.claw
+<span class="p">$</span> claw test</pre>
+<p>Platforms decide what your program can touch: <code>--platform cli</code> for command-line
+apps, <code>--platform http</code> for a web service. The language itself has no I/O —
+that's what makes effects checkable.</p>
+</section>
+
+<section id="language">
+<h2>The language in 60 seconds</h2>
+<pre><span class="c"># Functions: a signature, then a definition.</span>
+fizz : U64 -> Str
+fizz = |n| {
+    if n % 15 == 0 "FizzBuzz"
+    else if n % 3 == 0 "Fizz"
+    else if n % 5 == 0 "Buzz"
+    else n.to_str()
+}
+
+<span class="c"># Tags and pattern matching — no null, no exceptions.</span>
+classify = |n| match n {
+    0 => "zero"
+    1 => "one"
+    _ => "many"
+}
+
+<span class="c"># Effects are visible (the !) and checked. A pure function</span>
+<span class="c"># cannot quietly start reading files.</span>
+main! = |_args| {
+    echo!(fizz(15))
+    Ok({})
+}</pre>
+<p>Functional, effect-typed, expression-oriented. Full walkthrough:
+<a href="https://github.com/LambdaQ-Labs/claw/blob/main/docs/tour.md">the tour</a> (15 minutes,
+runnable examples).</p>
+</section>
+
+<section id="ai">
+<h2>claw ai — generate code that's checked before you see it</h2>
+<pre><span class="p">$</span> claw ai gen "define atleast10 : Nat -> Nat that computes Nat.max of x and 10"
+── generated ──
+atleast10 : Nat -> Nat
+atleast10 = |p0| Nat.max(p0, 10)
+<span class="ok">── verified ── real compiler: OK</span></pre>
+<p>What happened in that one command:</p>
+<ol>
+  <li>The prompt was built from your project's <b>real symbols</b> (the code database) — the model sees what exists, not what it imagines.</li>
+  <li>Generation ran <b>grammar-constrained</b>: names outside your project are impossible to emit at the token level.</li>
+  <li>The result went through the <b>actual compiler</b> before display.</li>
+</ol>
+<p>And when the model gets it wrong, you see this instead of a bug:</p>
+<pre><span class="bad">── REJECTED ── real compiler found 1 error(s)</span></pre>
+<p>Claw never hands you unverified generated code. Management commands:</p>
+<pre>claw ai status    <span class="c"># where the model and server are</span>
+claw ai serve     <span class="c"># start the model server (gen does this automatically)</span>
+claw ai stop</pre>
+<p>The model is a 0.5B fine-tune that runs on any laptop, CPU-only — no API key,
+no cloud, nothing leaves your machine.</p>
+</section>
+
+<section id="how-it-works">
+<h2>The four gates</h2>
+<table>
+  <tr><th>gate</th><th>what it stops</th></tr>
+  <tr><td>1 · Code database</td><td>guessing — the AI queries what exists (<code>claw db candidates "Nat, Nat -> Nat"</code>) instead of inventing an API</td></tr>
+  <tr><td>2 · Decode grammar</td><td>hallucination — out-of-scope names and undeclared effects are ungeneratable, not just discouraged</td></tr>
+  <tr><td>3 · Real typecheck</td><td>structural errors — wrong arity, undefined helpers, ignored parameters</td></tr>
+  <tr><td>4 · Executable contracts</td><td>wrong answers — code that typechecks but computes the wrong thing</td></tr>
+</table>
+<p>No single gate is trusted. Measured effect: invented API calls per benchmark run
+went from 38 to 0, and the bundled model passes 121/121 tasks hallucination-free.</p>
+</section>
+
+<section id="mcp">
+<h2>Claude, Cursor &amp; MCP</h2>
+<p>Any MCP-capable assistant can drive Claw natively. Add to your client's MCP config:</p>
+<pre>{
+  "mcpServers": {
+    "claw": {
+      "command": "~/.claw/bin/claw-mcp",
+      "args": ["--db", "claw.cdb"]
+    }
+  }
+}</pre>
+<p>Five tools become available: <code>claw_symbols</code> (what exists),
+<code>claw_candidates</code> (type-directed search), <code>claw_mask</code> (the decode grammar),
+<code>claw_render</code> (definition → source), and <code>claw_check</code> (real-compiler verdict
+on generated code). Per-client setup for Claude Code, Claude Desktop, Cursor,
+Windsurf, VS Code, Zed, Gemini CLI, and Codex CLI:
+<a href="https://github.com/LambdaQ-Labs/claw/blob/main/docs/mcp.md">docs/mcp.md</a>.</p>
+</section>
+
+<section id="packages">
+<h2>Packages</h2>
+<pre><span class="p">$</span> claw add somelib          <span class="c"># fetch from registry.clawlang.dev</span>
+<span class="p">$</span> claw publish               <span class="c"># publish your own</span></pre>
+<p>Claw's registry has one rule no other registry has: <b>every package must be
+AI-legible</b>. Publishing exports the package's definitions — names, types, effect
+rows, docs — and the registry rejects packages without them. When you
+<code>claw add</code> a package, those definitions flow into your project's code database:</p>
+<ul>
+  <li>your editor's completions know the package immediately,</li>
+  <li>your AI assistant (MCP) can query it,</li>
+  <li><code>claw ai gen</code> can call it — grammar-constrained, like everything else.</li>
+</ul>
+<p>Install a package, and every tool — human-facing or AI-facing — understands it.
+No docs to scrape, no types to guess. Packages are content-addressed (identity =
+hash), which also makes typosquatting economically pointless.</p>
+</section>
+
+<section id="editors">
+<h2>Editor support</h2>
+<ul>
+  <li><b>VS Code / Cursor / Windsurf:</b> the <a href="https://github.com/LambdaQ-Labs/claw/tree/main/editors/vscode">Claw extension</a> — syntax highlighting, snippets. Install the <code>.vsix</code> until it's on the marketplace.</li>
+  <li><b>Any LSP editor:</b> point it at <code>claw-lsp --db claw.cdb</code> for completions and hover types.</li>
+  <li><b>AI assistants:</b> the MCP server above.</li>
+</ul>
+</section>
+
+<section id="codedb">
+<h2>The code database</h2>
+<p>Claw code lives in a queryable, content-addressed database — the thing that
+makes the AI honest and refactors instant.</p>
+<pre><span class="p">$</span> claw index .                                <span class="c"># ingest your project</span>
+<span class="p">$</span> claw db symbols                              <span class="c"># everything that exists</span>
+<span class="p">$</span> claw db candidates "Str -> Str"              <span class="c"># type-directed search</span>
+<span class="p">$</span> claw db callers Nat.add                      <span class="c"># impact analysis</span>
+<span class="p">$</span> claw db eval myFunc 3 4                      <span class="c"># run a definition</span>
+<span class="p">$</span> claw db eval --real myFunc 3 4               <span class="c"># …through the actual compiler</span></pre>
+<p>For AI-written code, the verification commands:</p>
+<pre><span class="p">$</span> claw defs-check out.json task.json           <span class="c"># real-compiler verdict</span>
+<span class="p">$</span> claw defs-grade out.json task.json           <span class="c"># + executed contracts, as JSON</span>
+<span class="p">$</span> claw task-grammar task.json                  <span class="c"># the decode grammar for a scope</span></pre>
+</section>
+
+<section id="cli">
+<h2>CLI reference</h2>
+<table>
+  <tr><th>command</th><th>what it does</th></tr>
+  <tr><td><code>claw new &lt;name&gt; [--platform cli|http]</code></td><td>scaffold a project</td></tr>
+  <tr><td><code>claw run / check / build / fmt / test / repl</code></td><td>the compiler, passthrough</td></tr>
+  <tr><td><code>claw ai gen|serve|status|stop</code></td><td>the bundled model, guardrailed</td></tr>
+  <tr><td><code>claw index &lt;dir&gt;</code></td><td>ingest sources into the code database</td></tr>
+  <tr><td><code>claw db …</code></td><td>query it: symbols, candidates, callers, deps, render, eval, mask</td></tr>
+  <tr><td><code>claw add / publish</code></td><td>packages (registry.clawlang.dev)</td></tr>
+  <tr><td><code>claw defs-check / defs-grade / task-grammar</code></td><td>verify AI-generated code</td></tr>
+  <tr><td><code>claw emit-rust</code></td><td>transpile definitions to Rust</td></tr>
+  <tr><td><code>claw corpus gen</code></td><td>synthetic training data from a code database</td></tr>
+  <tr><td><code>claw telemetry [off|on|full|share|clear]</code></td><td>usage metrics controls</td></tr>
+  <tr><td><code>claw upgrade [--check]</code></td><td>self-update from GitHub Releases</td></tr>
+</table>
+</section>
+
+<section id="telemetry">
+<h2>Telemetry &amp; privacy</h2>
+<ul>
+  <li><b>Default:</b> anonymous metrics only — command kinds, verdict flags, error counts. <b>Never your code, paths, or prompts.</b></li>
+  <li><b>It announces itself</b> on first use and one command turns it off: <code>claw telemetry off</code> (or <code>CLAW_TELEMETRY=off</code>). Off means zero writes.</li>
+  <li><b>Sharing code samples for training is strictly opt-in</b> (<code>claw telemetry full</code>).</li>
+  <li>The local log is plain JSONL you can read (<code>~/.claw/telemetry/</code>), capped at 4&nbsp;MiB.</li>
+</ul>
+<p>Full policy: <a href="https://github.com/LambdaQ-Labs/claw/blob/main/docs/telemetry.md">docs/telemetry.md</a>.</p>
+</section>
+
+<section id="numbers">
+<h2>The numbers</h2>
+<p>Functional pass@1 — every generated function executed against test cases,
+identical grading for all arms. Same model, five languages:</p>
+<table>
+  <tr><th>arm</th><th>0.5B model</th><th>7B model</th></tr>
+  <tr class="win"><td>Claw (fine-tuned)</td><td>94%</td><td>94%</td></tr>
+  <tr><td>JavaScript (stock)</td><td>89%</td><td>68%</td></tr>
+  <tr><td>Python (stock)</td><td>56%</td><td>71%</td></tr>
+  <tr><td>Rust (stock)</td><td>35%</td><td>87%</td></tr>
+  <tr><td>Go (stock)</td><td>7%</td><td>85%</td></tr>
+</table>
+<p>Reference gate: 121/121 tasks hallucination-free and effect-sound, at both model
+scales. Reproduce everything from the
+<a href="https://github.com/LambdaQ-Labs/claw/tree/main/bench">committed harness</a>;
+method and honest caveats in
+<a href="https://github.com/LambdaQ-Labs/claw/blob/main/docs/parity-2026-07-05.md">the parity report</a>.</p>
+</section>
+
+<section id="deeper">
+<h2>Going deeper</h2>
+<ul>
+  <li><a href="https://github.com/LambdaQ-Labs/claw/blob/main/docs/tour.md">Language tour</a> — every feature, runnable</li>
+  <li><a href="https://github.com/LambdaQ-Labs/claw/blob/main/docs/getting-started.md">Getting started</a> — the longer version of this page</li>
+  <li><a href="https://github.com/LambdaQ-Labs/claw/blob/main/docs/networking.md">Networking</a> — the HTTP platform</li>
+  <li><a href="https://github.com/LambdaQ-Labs/claw/blob/main/docs/benchmark-harness.md">Benchmark harness</a> — how grading works, add a task (good first issue)</li>
+  <li><a href="https://github.com/LambdaQ-Labs/claw/blob/main/docs/master-plan.md">Master plan</a> — the thesis and the roadmap</li>
+  <li><a href="https://github.com/LambdaQ-Labs/claw/blob/main/CONTRIBUTING.md">Contributing</a></li>
+</ul>
+</section>
+</main>
+</div>
+
+</body>
+</html>

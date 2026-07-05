@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How we built a programming language that AI can't lie in — the whole story</title>
+<meta name="description" content="From a one-line idea to a shipped language with its own AI, in a handful of days and about two dollars of GPU. The honest, fun, jargon-free story of building Claw.">
+<link rel="canonical" href="https://clawlang.dev/story.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="How we built a programming language that AI can't lie in">
+<meta property="og:description" content="From a one-line idea to a shipped language with its own AI — in days, for about two dollars of GPU. The honest, fun story.">
+<meta property="og:image" content="https://clawlang.dev/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M6 26 Q10 12 16 6 Q14 16 12 26 Z M13 26 Q17 13 23 7 Q20 17 18 26 Z M19 26 Q23 15 28 10 Q25 19 24 26 Z' fill='%23b45309'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#faf7f2; --panel:#ffffff; --panel2:#f1ece4; --line:#e5ddd0;
+  --ink:#292420; --dim:#6b6259; --acc:#ea580c; --acc2:#c2410c;
+  --copper:#b45309; --good:#15803d; --bad:#b91c1c;
+  --mono:ui-monospace,'SF Mono','Cascadia Code',Menlo,Consolas,monospace;
+  --sans:'Avenir Next','Segoe UI Variable','Segoe UI',-apple-system,BlinkMacSystemFont,sans-serif;
+  --serif:'Iowan Old Style','Palatino Linotype',Palatino,Georgia,serif;
+}
+@media(prefers-color-scheme:dark){
+  :root{--bg:#151210;--panel:#201b17;--panel2:#1a1613;--line:#332c25;
+  --ink:#ede9e4;--dim:#a39a8e;--acc:#fb923c;--acc2:#fdba74;--copper:#e08a2e;--good:#4ade80;--bad:#f87171}
+}
+:root[data-theme="light"]{--bg:#faf7f2;--panel:#ffffff;--panel2:#f1ece4;--line:#e5ddd0;--ink:#292420;--dim:#6b6259;--acc:#ea580c;--acc2:#c2410c;--copper:#b45309;--good:#15803d;--bad:#b91c1c}
+:root[data-theme="dark"]{--bg:#151210;--panel:#201b17;--panel2:#1a1613;--line:#332c25;--ink:#ede9e4;--dim:#a39a8e;--acc:#fb923c;--acc2:#fdba74;--copper:#e08a2e;--good:#4ade80;--bad:#f87171}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.75}
+a{color:var(--acc)} a:hover{text-decoration:underline}
+a:focus-visible{outline:2px solid var(--copper);outline-offset:2px}
+header{padding:14px 0;border-bottom:1px solid var(--line)}
+.hwrap{max-width:1080px;margin:0 auto;padding:0 22px;display:flex;align-items:center;gap:10px}
+.logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:18px;color:var(--ink);text-decoration:none}
+header nav{margin-left:auto;display:flex;gap:18px;font-size:14px}
+header nav a{color:var(--dim)}
+.wrap{max-width:680px;margin:0 auto;padding:0 22px}
+.hero{padding:64px 0 20px;text-align:center}
+.eyebrow{font-family:var(--mono);font-size:12.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--copper);margin-bottom:16px}
+h1{font-family:var(--serif);font-size:clamp(30px,5.2vw,46px);line-height:1.12;letter-spacing:-.01em;text-wrap:balance}
+.dek{color:var(--dim);font-size:19px;margin:18px auto 0;max-width:34em}
+.byline{margin-top:20px;font-size:14px;color:var(--dim);font-family:var(--mono)}
+article{padding:24px 0 60px}
+article h2{font-family:var(--serif);font-size:27px;margin:48px 0 6px;letter-spacing:-.01em;text-wrap:balance}
+article h2 .n{color:var(--copper);font-family:var(--mono);font-size:15px;font-weight:400;display:block;letter-spacing:.1em;margin-bottom:2px}
+article p{margin:16px 0}
+article p .lead{font-size:19px}
+blockquote{margin:22px 0;padding:2px 0 2px 20px;border-left:3px solid var(--copper);color:var(--ink);font-family:var(--serif);font-size:20px;font-style:italic}
+.pull{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:18px 22px;margin:22px 0}
+.pull b{color:var(--acc)}
+code{font-family:var(--mono);font-size:.9em;background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:1px 5px}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;font-family:var(--mono);font-size:13.5px;line-height:1.6;overflow-x:auto;margin:20px 0}
+pre .c{color:var(--dim)} pre .ok{color:var(--good)} pre .bad{color:var(--bad)} pre .p{color:var(--acc)}
+table{width:100%;border-collapse:collapse;font-size:15px;margin:20px 0;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--line)}
+th{color:var(--dim);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+tr.win td{color:var(--good);font-weight:650}
+hr{border:none;border-top:1px solid var(--line);margin:44px 0}
+.foot{padding:36px 0;border-top:1px solid var(--line);color:var(--dim);font-size:14.5px;text-align:center}
+.cta{display:inline-block;margin:6px;background:var(--acc);color:#fff;font-weight:600;padding:11px 22px;border-radius:8px;text-decoration:none}
+:root[data-theme="dark"] .cta{color:#1f1409}
+.cta.ghost{background:transparent;color:var(--acc);border:1.5px solid var(--line)}
+.cta:hover{text-decoration:none;filter:brightness(1.06)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hwrap">
+    <a class="logo" href="index.html">
+      <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true"><path d="M6 26 Q10 12 16 6 Q14 16 12 26 Z M13 26 Q17 13 23 7 Q20 17 18 26 Z M19 26 Q23 15 28 10 Q25 19 24 26 Z" fill="#b45309"/></svg>
+      Claw
+    </a>
+    <nav><a href="index.html">Home</a><a href="docs.html">Docs</a><a href="playground.html">Playground</a><a href="https://github.com/LambdaQ-Labs/claw">GitHub</a></nav>
+  </div>
+</header>
+
+<div class="hero wrap">
+  <div class="eyebrow">The origin story</div>
+  <h1>How we built a language that AI can't lie in</h1>
+  <p class="dek">From a single annoyed thought to a shipped programming language with its own
+  built-in AI — in a handful of days, for about the price of a sandwich in cloud GPU.
+  Here's the whole messy, fun, honest story.</p>
+  <div class="byline">LambdaQ Labs · a build log</div>
+</div>
+
+<article class="wrap">
+
+<p><span class="lead">It started with a small, specific irritation.</span> You ask an AI
+to write some code. It answers instantly, confidently — and calls a function that
+<em>does not exist</em>. It made it up. The code looks perfect right up until it
+explodes. Every developer using AI has hit this. The industry's answer is always the
+same: <em>write better prompts, beg the model harder.</em></p>
+
+<p>We didn't buy it. You can't prompt your way out of a model's imagination. So we
+asked a stubborn question: what if the <strong>language itself</strong> made lying
+impossible?</p>
+
+<h2><span class="n">Chapter 1</span>The bet</h2>
+
+<p>The idea: a programming language where an AI can't reference something that isn't
+real, can't quietly do things it didn't declare, and can't hand you code that fails
+its own tests — because the language checks all of it before you ever see the answer.</p>
+
+<p>Building a compiler from scratch takes years. So we did the sensible thing and stood
+on giants' shoulders — we forked <a href="https://roc-lang.org">Roc</a>, a beautiful
+existing language whose design happens to make "what can this code touch?" a checkable
+question. We named ours <strong>Claw</strong> (Roc is a mythical giant bird; a claw is
+what does the gripping). Then we got to work on the part nobody had done.</p>
+
+<h2><span class="n">Chapter 2</span>The four locked doors</h2>
+
+<p>Instead of one clever trick, we built four independent checks — a code has to pass
+all of them, and no single one is trusted:</p>
+
+<div class="pull">
+<p><b>1. A live map of what exists.</b> The code lives in a searchable database. The AI
+asks "what's actually here that fits?" instead of guessing.</p>
+<p><b>2. A straitjacket for the AI's pen.</b> When the AI writes, it's physically
+constrained so that made-up names <em>cannot be typed</em> — not discouraged,
+impossible.</p>
+<p><b>3. The real compiler, checking every line.</b> Whatever the AI produces gets
+compiled for real before it's shown.</p>
+<p><b>4. Tests that actually run.</b> Code can look right and still compute the wrong
+answer. So the answers get executed and checked.</p>
+</div>
+
+<p>Then came the moment of truth. We fed a small AI a batch of tasks. Without the code
+map, it invented <strong>38 fake functions</strong> across ten tasks. We turned the map
+on and ran it again:</p>
+
+<pre><span class="c"># invented functions per run</span>
+before:  38
+after:   <span class="ok">0</span></pre>
+
+<blockquote>Zero. From context alone. That was the day we knew this wasn't just a nice idea.</blockquote>
+
+<h2><span class="n">Chapter 3</span>Teaching a language with no students</h2>
+
+<p>Here's a problem nobody warns you about: a brand-new language has <em>no code in the
+world</em>, so AI models are worst at exactly the thing they'd be used for. Every prior
+"AI-first language" died right here.</p>
+
+<p>Our escape was to <em>manufacture</em> the lessons. We wrote a generator that produces
+thousands of correct little Claw programs — guaranteed correct, because they're built
+from the rules rather than guessed. Then we rented a cloud GPU and taught a tiny AI
+model (small enough to run on any laptop, no internet, no API key) using them.</p>
+
+<p>The first attempt taught the model to reference things by an unguessable secret code
+instead of by name. Useless. We caught it, fixed it, and the total cost of that
+training run was:</p>
+
+<pre><span class="p">$</span> 0.03</pre>
+
+<p>Three cents. That number stops being a joke in a minute.</p>
+
+<h2><span class="n">Chapter 4</span>The scoreboard that mattered</h2>
+
+<p>We kept growing the lessons and re-teaching. The model's "makes stuff up" rate walked
+down a staircase: 28% clean → 89% → <strong>100%</strong>. Then we did the honest test —
+we wrote fresh tasks by hand, worded differently so the model couldn't just
+pattern-match, and it still scored well.</p>
+
+<p>Then the big one. The whole project's reason to exist rests on a single claim: <em>can
+a purpose-built language beat the languages the AI already knows cold?</em> So we had one
+model write the same problems in five languages, ran every single answer, and counted
+what actually worked:</p>
+
+<table>
+<tr><th>language</th><th>how often the code worked</th></tr>
+<tr class="win"><td>Claw (after 3¢ of training)</td><td>94%</td></tr>
+<tr><td>JavaScript (as-is)</td><td>89%</td></tr>
+<tr><td>Python (as-is)</td><td>56%</td></tr>
+<tr><td>Rust (as-is)</td><td>35%</td></tr>
+<tr><td>Go (as-is)</td><td>7%</td></tr>
+</table>
+
+<p>The same AI wrote 94%-correct Claw and 56%-correct Python. We reran the whole thing
+with a model <em>fourteen times bigger</em> to be sure it wasn't a fluke of small models —
+Claw still came first. That's the thesis, on the board, with the scoreboard attached and
+the tools to reproduce it published.</p>
+
+<h2><span class="n">Chapter 5</span>The part where it becomes real</h2>
+
+<p>A proof isn't a product. So we built the boring, essential everything: a one-command
+installer, a self-updater, editor support, a package registry with a rule no other
+registry has (<em>every package must be readable by AI, or it's rejected</em>), a
+playground that runs the real engine in your browser with zero servers, and connectors so
+Claude, Cursor, and friends plug straight in.</p>
+
+<p>We put the whole thing on our own hardware. Monthly cost to run the website, the
+registry, and the data pipeline:</p>
+
+<pre><span class="p">$</span> ~0.00</pre>
+
+<p>Then we did the thing every honest builder should and almost nobody does: <strong>we
+used our own product from scratch.</strong> Fresh install, build a real package. And it
+immediately caught a bug — installing a package was quietly forgetting to tell the AI
+about it. We'd have shipped that. Dogfooding earned its keep in the first ten minutes.</p>
+
+<h2><span class="n">Chapter 6</span>One download, batteries included</h2>
+
+<p>Here's the line we cared about most. You said it plainly: <em>a language whose whole
+point is the AI, that makes you download the AI separately, isn't a product — it's a
+chore.</em> Dead right.</p>
+
+<p>So we made it one file. The installer brings the compiler, the editor tools, the AI
+model, and the engine that runs it — everything, in a single command. Type this on a
+fresh machine and, seconds later, an AI on your own laptop writes verified code with no
+key and no cloud:</p>
+
+<pre><span class="p">$</span> curl -fsSL https://clawlang.dev/install.sh | sh
+<span class="p">$</span> claw ai gen "define atleast10 that takes the bigger of x and 10"
+── generated ──  atleast10 = |p0| Nat.max(p0, 10)
+<span class="ok">── verified ── real compiler: OK</span></pre>
+
+<p>And when the little model gets it wrong — which it does — you don't get a bug. You get
+this, and the broken code never reaches you:</p>
+
+<pre><span class="bad">── REJECTED ── the compiler found an error</span></pre>
+
+<h2><span class="n">Chapter 7</span>The hunt for a better brain (we're in it right now)</h2>
+
+<p>The bundled model is deliberately tiny — it has to run on <em>any</em> laptop. It's
+reliable but not brilliant, and it fumbles unusual problems (the guardrails catch those,
+which is the point, but still). So the current chapter, being written as you read this,
+is the search for a bigger-but-still-tiny brain. We tested Google's Gemma, and it scored higher — but it "thinks
+out loud" before answering, which fights our straitjacket and is slow. We tried a couple
+of Qwen models and hit a bug in <em>our own</em> training shortcut that made a great model
+look terrible; we caught it by noticing the damage was identical no matter how much we
+trained. Now we're re-running the whole comparison with the proven tools.</p>
+
+<blockquote>That's the honest state of it: no clean winner yet, but we know exactly why
+the last test was messy, and the fix is running. Total spent chasing this: under a dollar.</blockquote>
+
+<h2><span class="n">The receipts</span>What it all cost</h2>
+
+<p>A brand-new language, a bundled AI that beats the incumbents on a real benchmark, a
+website, a registry, a playground, editor tools, and downloadable installers for three
+operating systems.</p>
+
+<table>
+<tr><th>cloud GPU, everything</th><td>under $2</td></tr>
+<tr><th>monthly infrastructure</th><td>~$0</td></tr>
+<tr><th>the claim</th><td>measured, reproducible, receipts public</td></tr>
+</table>
+
+<p>Not a rebranded fork with a logo. A language that ships its own AI, whose AI can't show
+you code it hasn't verified, whose packages are legible to every assistant by law — built
+in the open, cheaply, and honestly, mistakes and all.</p>
+
+<hr>
+
+<p style="text-align:center">
+<a class="cta" href="index.html">See what it does</a>
+<a class="cta ghost" href="playground.html">Try it in your browser</a>
+</p>
+
+</article>
+
+<div class="foot">
+  <div class="wrap">Claw · LambdaQ Labs · built on <a href="https://roc-lang.org">Roc</a> ·
+  <a href="https://github.com/LambdaQ-Labs/claw">the whole thing is open source</a></div>
+</div>
+
+</body>
+</html>

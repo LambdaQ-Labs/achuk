@@ -34,6 +34,15 @@ Same 15 tasks. Same models. The only change: give the model Claw's code-as-datab
 
 > API hallucination: **−96% to −100%**, from the language alone. No fine-tuning. No bigger model. [Full methodology →](docs/baseline-2026-07-03.md)
 
+And with fine-tuning, the bundled model now clears the survival test. On the reference gate it is **121/121 (100%) hallucination-free and effect-sound** ([gate writeup](docs/p4-v3-gate-2026-07-05.md)) — at both 0.5B and 7B. On functional correctness (Pass@1, 116 tasks, execution-graded, same model per row):
+
+| Model | Claw (tuned) | JS | Python | Rust | Go |
+|---|---|---|---|---|---|
+| **0.5B** | **94%** | 89% | 56% | 35% | 7% |
+| **7B** | **94%** (110/116) | 68% | 71% | 87% | 85% |
+
+The same model writes Claw better than it writes JavaScript, Python, Rust, or Go — at both scales. [Full parity writeup →](docs/parity-2026-07-05.md)
+
 There's a stronger layer too: with decode-time grammar constraints, an out-of-scope **library API call is literally ungeneratable** — the symbol isn't in the model's grammar, so it can't be typed. (Bare unbound *locals* still need the typechecker; a context-free grammar can't tell a lambda param from a free var. We publish the [honest first A2 run](docs/baseline-2026-07-03.md), warts and all.)
 
 ## The idea
@@ -75,8 +84,9 @@ claw mcp install         # registers the MCP server with Claude Code
 claw index               # (re)index your project's real symbols
 ```
 
-Now Claude Code can call `claw_symbols` / `claw_candidates` / `claw_mask` and
-only ever reference functions that actually exist.
+Now Claude Code can call `claw_symbols` / `claw_candidates` / `claw_mask` /
+`claw_render` / `claw_check` and only ever reference functions that actually
+exist.
 
 **New here?** Read [Getting started](docs/getting-started.md) and
 [the language in 10 minutes](docs/tour.md), or browse runnable
@@ -121,7 +131,7 @@ Or open [`playground/index.html`](playground/index.html) — an in-browser demo.
 | **Real call graph on real code** — `claw db deps` / `callers` from lowered bodies (body-lowering: CIR → AST) | ✅ works |
 | **Run + property-check your real code** — `claw db eval` runs a def from the DB; `claw db check` property-tests a contract against it | ✅ works |
 | Decode-time grammar that makes out-of-scope calls ungeneratable | ✅ works (Def-JSON protocol) |
-| Bundled fine-tuned model (0→98% hallucination-free, [P4 gate](docs/p4-gate-2026-07-04.md)) | 🧪 research (separate download) |
+| Bundled fine-tuned model (**121/121 (100%)** hallucination-free + effect-sound, [P4 v3 gate](docs/p4-v3-gate-2026-07-05.md); **94%** functional Pass@1, [parity](docs/parity-2026-07-05.md)) | 🧪 research (separate download) |
 | `emit-rust` on real bodies | 🧪 experimental |
 | Records / tag-unions / `match` in lowered bodies (currently opaque markers) | 🗺️ roadmap (needs AST + interp support) |
 | File / stdin platform I/O beyond print | 🗺️ roadmap (needs a new host) |
@@ -160,16 +170,23 @@ The load-bearing trick: the model never references a symbol by guessing its name
 | `corpus/` | Synthetic, self-verifying training-corpus generator (the cold-start seed) |
 | `cli/` | The `claw` CLI (db / compiler / emit-rust / corpus) |
 | `mcp/` · `lsp/` | MCP server (agents) and Language Server (editors) over the CDB |
-| `bench/` | Benchmark harness — arms A0/A1/A2, grader with executable contracts |
-| `train/` | LoRA fine-tune pipeline + the first bundled-model run |
+| `bench/` | Benchmark harness — `tasks/` (31), `tasks-holdout/` (25), `tasks-large/` (121), `grammars/` (146), parity arms, grader with executable contracts |
+| `train/` | LoRA fine-tune pipeline — `corpus-v4.jsonl`, four gate runs, parity harness |
+| `telemetry/` | Opt-in usage telemetry crate + collection worker |
+| `editors/` | VS Code extension (tmLanguage grammar + snippets, packaged vsix) |
+| `platforms/` | Bundled platforms (print, cli, http) for macOS arm64 + Linux musl |
+| `examples/` · `scripts/` | Runnable examples · packaging + release scripts |
 | `playground/` · `registry/` | In-browser demo · content-addressed package format |
+| `site/` | The clawlang.dev website |
 | `docs/` | Master plan, specs, and the honest benchmark writeups |
 
 ## Status (honest)
 
 **Experimental. Pre-alpha. Built in the open** — but further than most first commits. What works today, with tests: the compiler type-checks `.claw`; the code-as-database, constraint server, and structured errors run; contracts *execute* on generated inputs (behaviour-level pass, not just compile); effects + capabilities check; `emit-rust` and the MCP/LSP servers work; and a fine-tuned "bundled model" was trained end-to-end on a self-verifying corpus (for **$0.03** of GPU) and emits valid, in-scope Claw. See the [benchmark writeup](docs/baseline-2026-07-03.md) — warts and all.
 
-What's next: scale the corpus so the bundled model *beats* a general model on Claw (the survival test), a real standard library, and adoption. This is a research bet with real, measured evidence — not a finished product. If that's your kind of thing — **★ star it and watch where it goes.**
+The survival test — does the tuned model beat a general model on Claw? — **passed on 2026-07-05, at both scales**: 121/121 (100%) hallucination-free + effect-sound on the reference gate, and 94% functional Pass@1 vs 89% JS / 56% Python (0.5B) and 94% vs 87% Rust / 85% Go / 71% Python / 68% JS (7B). See the [gate](docs/p4-v3-gate-2026-07-05.md) and [parity](docs/parity-2026-07-05.md) writeups.
+
+What's next: a bigger holdout, records in the type system, registry hosting, and launch. This is a research bet with real, measured evidence — not a finished product. If that's your kind of thing — **★ star it and watch where it goes.**
 
 ## Contributing
 

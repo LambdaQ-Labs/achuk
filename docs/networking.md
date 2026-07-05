@@ -6,8 +6,8 @@ platform, but the toolchain ships richer platforms you can target with an
 explicit app header. This page shows a **real HTTP server written in Claw**,
 verified end-to-end with `curl`.
 
-> Status: **experimental (macOS).** One command scaffolds a networked
-> project:
+> Status: **shipping (macOS arm64 + Linux arm64/x64 musl).** One command
+> scaffolds a networked project:
 >
 > ```sh
 > claw new myapi --platform http
@@ -15,8 +15,8 @@ verified end-to-end with `curl`.
 > ```
 >
 > This copies the bundled HTTP platform into your project and generates the
-> handler below. Prebuilt hosts are macOS (arm64); the Linux host is a
-> roadmap item. Everything here is real output.
+> handler below. Prebuilt hosts ship for macOS (arm64) and Linux
+> (arm64/x64 musl). Everything here is real output.
 
 ## A Claw HTTP auth gateway
 
@@ -86,7 +86,8 @@ record, no manual string munging.
 
 ## What this means for the roadmap
 
-Network I/O is **not** blocked on new language work — a working socket/HTTP
-host already exists. The remaining work is productization: bundling the HTTP
-(and a file/stdin) platform as first-class `claw` targets, building the Linux
-host, and a friendly `claw new --platform http` scaffold. Tracked for v0.1.1.
+Network I/O is **not** blocked on new language work — the socket/HTTP host is
+bundled as a first-class target (`claw new --platform http`, plus `--platform
+cli` for stdin/stdout apps), with prebuilt hosts for macOS arm64 and Linux
+musl. What's left: a Windows host, a TLS/HTTPS story for the HTTP platform,
+and first-class file I/O.

@@ -27,8 +27,8 @@ bundle+URL machinery — additive, not reinvented.
 - **`clawc defs --json`** + **body-lowering** — CIR → serializable AST → the CDB's real **call graph** (`db deps`/`callers`/`eval`/`check`)
 - **executable contracts** — predicate language + property-check on real code (`db check`)
 - **structured diagnostics** — JSON + ranked patches
-- **corpus generator + bundled-model training** — the cold-start escape (0→98% hallucination-free)
-- **benchmark harness** — A0/A1/A2 arms + grader
+- **corpus generator + bundled-model training** — the cold-start escape (121/121 = 100% hallucination-free on the reference gate)
+- **benchmark harness** — A0/A1/A2 arms + 5-language parity arms + grader, over `tasks/`, `tasks-holdout/`, and `tasks-large/`
 - **MCP server** — agent grounding over the real symbol table
 - **emit-rust** — Claw → Rust transpiler
 - **package registry service** + `claw publish` / `claw add`

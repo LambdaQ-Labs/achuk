@@ -15,7 +15,7 @@ minus what doesn't apply, plus the AI-first layer no incumbent has.
 | Formatter | rustfmt | `claw fmt` ✅ | — |
 | Test runner | cargo test | `claw test` ✅ | wire into grader oracles |
 | LSP | rust-analyzer | `claw-lsp` (completion, hover) 🟡 | diagnostics, go-to-def from CDB |
-| Editor syntax | everywhere | **none** ❌ | VS Code extension (covers Cursor/Windsurf/VSCodium), then tree-sitter (covers Zed/Neovim/Helix) |
+| Editor syntax | everywhere | VS Code extension (`editors/vscode`: tmLanguage grammar + snippets, packaged vsix) ✅ | tree-sitter next (covers Zed/Neovim/Helix) |
 | Playground | play.rust-lang.org | `playground/index.html` (JS mirror of the type/grammar engine) 🟡 | link from site now; hosted real-compile later (server or WASM clawc) |
 | Docs site | doc.rust-lang.org + The Book | `docs/*.md` + tour + getting-started 🟡 | website + docs index (site/) |
 | Stdlib reference | docs.rs | none ❌ | render from the CDB — `claw db render --docs` is a natural fit |
@@ -28,7 +28,7 @@ minus what doesn't apply, plus the AI-first layer no incumbent has.
 
 | component | status | why an AI company cares |
 |---|---|---|
-| Code-as-database (CDB) | ✅ | agent asks "what exists?" instead of guessing — hallucination 38→0 measured |
+| Code-as-database (CDB) | ✅ | agent asks "what exists?" instead of guessing — hallucination 38→0 measured; tuned model 121/121 on the gate |
 | MCP server (5 tools) | ✅ + docs for 8 clients | drop-in for Claude/Cursor/Gemini/Codex agents today |
 | Decode grammar (GBNF per scope) | ✅ | out-of-scope calls *ungeneratable* — a guarantee, not a prompt |
 | Real-compile check API (`defs-check`) | ✅ | the verifier loop agents need (arity/type errors caught) |
@@ -41,7 +41,7 @@ minus what doesn't apply, plus the AI-first layer no incumbent has.
 
 ## What actually wins the two audiences
 
-**Developers (launch day):** one-line install → `claw init` → working
+**Developers (launch day):** one-line install → `claw new` → working
 program in 60 seconds; an editor that highlights; a playground to try
 without installing; a README with numbers not adjectives. Excitement =
 "the AI in my editor stops making things up when the project is Claw."
@@ -55,11 +55,12 @@ Claw gate" doc. If two labs publish gate numbers, Claw is a standard.
 
 ## Priority order (effort × leverage)
 
-1. **VS Code extension** — hours of work, every demo screenshot needs it
-2. **Website + docs index + playground link** — the front door
-3. **Registry hosting + first release tag** — makes install real
-4. **Agent cookbook + hosted eval doc** — the AI-company wedge
-5. **Stdlib reference from CDB, tree-sitter grammar, setup-claw action**
-6. Discord/Discussions at launch (community needs a launch to gather around)
+1. **Website + docs index + playground link** — the front door
+2. **Registry hosting + first release tag** — makes install real
+3. **Agent cookbook + hosted eval doc** — the AI-company wedge
+4. **Stdlib reference from CDB, tree-sitter grammar, setup-claw action**
+5. Discord/Discussions at launch (community needs a launch to gather around)
+
+(The VS Code extension is done — `editors/vscode`, vsix packaged.)
 
 Everything above the line is buildable this week at ~$0 infra.

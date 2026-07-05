@@ -66,12 +66,14 @@ it into Claude Code with one command:
 claw mcp install
 ```
 
-This registers a local MCP server (`.mcp.json`) that answers three questions
+This registers a local MCP server (`.mcp.json`) that exposes five tools
 over *your real code*:
 
 - `claw_symbols` — every function that actually exists, with its type.
 - `claw_candidates` — given a target type, which real functions fit.
 - `claw_mask` — a decode grammar so out-of-scope calls are ungeneratable.
+- `claw_render` — render a Def-JSON definition to `.claw` source.
+- `claw_check` — real-compile a definition and get structured errors back.
 
 Re-index after adding files:
 
@@ -88,8 +90,8 @@ claw index
 
 - **Compile & run** real programs, self-contained.
 - **Print + compute + args** with `claw run`.
-- **Networking** (a real HTTP server) via an explicit platform — see
-  [networking.md](networking.md). Bundling it as a `claw new` target is next.
+- **Networking** (a real HTTP server) — `claw new myapi --platform http`
+  scaffolds one; see [networking.md](networking.md).
 - **AI guardrail** over your real symbol table (via `claw index` + MCP).
 
 See the README's feature matrix for what's experimental vs planned.

@@ -14,9 +14,12 @@
 
 pub mod gbnf;
 
+#[cfg(feature = "cdb")]
 use claw_cdb::{Cdb, Result};
 use claw_core::{Hash, Subst, Type};
-use claw_diagnostics::{Category, Diagnostic, Loc};
+use claw_diagnostics::Diagnostic;
+#[cfg(feature = "cdb")]
+use claw_diagnostics::{Category, Loc};
 use serde::{Deserialize, Serialize};
 
 /// A typed hole: where generation is happening and what must go there.
@@ -67,6 +70,7 @@ impl Mask {
 /// The core function: legal continuations for a typed hole.
 /// Filters deprecated symbols — the model should never be steered into
 /// APIs we already know are on the way out.
+#[cfg(feature = "cdb")]
 pub fn legal_continuations(cdb: &Cdb, hole: &HoleContext) -> Result<Mask> {
     let mut list: Vec<Continuation> = cdb
         .candidates(&hole.expected)?
@@ -104,7 +108,7 @@ pub fn legal_continuations(cdb: &Cdb, hole: &HoleContext) -> Result<Mask> {
     Ok(Mask::Symbols(list))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "cdb"))]
 mod tests {
     use super::*;
     use claw_core::{Def, Expr, Lit};

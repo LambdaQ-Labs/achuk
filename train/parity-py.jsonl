@@ -1,116 +1,116 @@
-{"task": "../bench/tasks-holdout/ho-area.json", "name": "area", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef area(w: Nat, h: Nat) -> Nat:\n    return w * h\n```"}
-{"task": "../bench/tasks-holdout/ho-clamp01.json", "name": "floor0", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef floor0(x: int) -> int:\n    return x\n```"}
-{"task": "../bench/tasks-holdout/ho-fresh-add.json", "name": "total", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef total(a: Nat, b: Nat) -> Nat:\n    return a + b\n```"}
-{"task": "../bench/tasks-holdout/ho-guard-dec.json", "name": "guard_dec", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef guard_dec(x):\n    \"\"\"\n    Subtract one from x, but never move below zero.\n    \n    Parameters:\n    x (int): The input number.\n    \n    Returns:\n    int: The result of subtracting one from x.\n    \"\"\"\n    return x - 1\n\n# Check function to verify the correctness of the solution\ndef check_guard_dec():\n    assert guard_dec(5) == 4, \"Test case 1 failed\"\n    assert guard_dec(-3) == -4, \"Test case 2 failed\"\n    assert guard_dec(0) == 0, \"Test case 3 failed\"\n    assert guard_dec(10) == 9, \"Test case 4 failed\"\n    print(\"All test cases passed!\")\n\ncheck_guard_dec()\n```\n\nThis Python code snippet defines a function `guard_dec` that subtracts one from a given non-negative integer `x`, adhering to the specified"}
+{"task": "../bench/tasks-holdout/ho-area.json", "name": "area", "raw": "```python\ndef area(w, h):\n    return w * h\n```"}
+{"task": "../bench/tasks-holdout/ho-clamp01.json", "name": "floor0", "raw": "```python\ndef floor0(x):\n    return x\n```"}
+{"task": "../bench/tasks-holdout/ho-fresh-add.json", "name": "total", "raw": "```python\ndef total(a, b):\n    return a + b\n```"}
+{"task": "../bench/tasks-holdout/ho-guard-dec.json", "name": "guard_dec", "raw": "```python\ndef guard_dec(x):\n    return max(0, x - 1)\n```"}
 {"task": "../bench/tasks-holdout/ho-inc3.json", "name": "bump", "raw": "```python\ndef bump(x):\n    return x + 1\n```"}
-{"task": "../bench/tasks-holdout/ho-js-min3.json", "name": "min3", "raw": "```python\ndef min3(a, b, c):\n    return min(a, min(b, c))\n```\n\nThis Python function follows the same logic as the JavaScript function `min3`, using the `min` function from the `math` module to find the minimum of three numbers."}
-{"task": "../bench/tasks-holdout/ho-larger.json", "name": "larger", "raw": "```python\ndef larger(a, b):\n    \"\"\"\n    Returns the larger of two numbers.\n    \n    Parameters:\n    a (Nat): The first number.\n    b (Nat): The second number.\n    \n    Returns:\n    Nat: The larger of the two numbers.\n    \"\"\"\n    return max(a, b)\n```\n\nThis function takes two arguments, `a` and `b`, and returns the larger of them using the `max` function from Python's built-in `math` module."}
-{"task": "../bench/tasks-holdout/ho-quadruple.json", "name": "quadruple", "raw": "```python\ndef quadruple(x):\n    return lambda y: 2 * x + y\n```"}
-{"task": "../bench/tasks-holdout/ho-succ-sqr.json", "name": "succ_sqr", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef succ_sqr(x: Nat) -> Nat:\n    return x + 1\n```"}
-{"task": "../bench/tasks-holdout/ho-tip.json", "name": "with_fee", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef with_fee(amount):\n    return lambda c: amount + 250 if c else amount\n```"}
+{"task": "../bench/tasks-holdout/ho-js-min3.json", "name": "min3", "raw": "```python\ndef min3(a, b, c):\n    return min(a, min(b, c))\n```"}
+{"task": "../bench/tasks-holdout/ho-larger.json", "name": "larger", "raw": "```python\ndef larger(a, b):\n    return a if a > b else b\n```"}
+{"task": "../bench/tasks-holdout/ho-quadruple.json", "name": "quadruple", "raw": "```python\ndef quadruple(x):\n    return x * 4\n```"}
+{"task": "../bench/tasks-holdout/ho-succ-sqr.json", "name": "succ_sqr", "raw": "```python\ndef succ_sqr(x):\n    return x * x + 2 * x + 1\n```"}
+{"task": "../bench/tasks-holdout/ho-tip.json", "name": "with_fee", "raw": "```python\ndef with_fee(amount):\n    return amount + 250\n```"}
 {"task": "../bench/tasks-large/gen-add1-v0.json", "name": "add1", "raw": "```python\ndef add1(x):\n    return x + 1\n```"}
-{"task": "../bench/tasks-large/gen-add1-v1.json", "name": "add1", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef add1(x):\n    return x + 1\n```"}
-{"task": "../bench/tasks-large/gen-add1-v2.json", "name": "add1", "raw": "```python\ndef add1(x):\n    return x + 1\n```"}
-{"task": "../bench/tasks-large/gen-add10-v0.json", "name": "add10", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef add10(x: Nat) -> Nat:\n    return Nat.add(x, 10)\n```"}
-{"task": "../bench/tasks-large/gen-add10-v1.json", "name": "add10", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef add10(x):\n    return x + 10\n```"}
-{"task": "../bench/tasks-large/gen-add10-v2.json", "name": "add10", "raw": "```python\ndef add10(x):\n    return x + 10\n```"}
-{"task": "../bench/tasks-large/gen-add100-v0.json", "name": "add100", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef add100(x: Nat) -> Nat:\n    return Nat.add(x, 100)\n```"}
-{"task": "../bench/tasks-large/gen-add100-v1.json", "name": "add100", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef add100(x: int) -> int:\n    return x + 100\n```"}
-{"task": "../bench/tasks-large/gen-add100-v2.json", "name": "add100", "raw": "```python\ndef add100(x):\n    return x + 100\n```"}
+{"task": "../bench/tasks-large/gen-add1-v1.json", "name": "add1", "raw": "```python\ndef add1(x):\n    return x + 1\n```"}
+{"task": "../bench/tasks-large/gen-add1-v2.json", "name": "add1", "raw": "```python\ndef add1(x):\n    return Nat.add(x, 1)\n```"}
+{"task": "../bench/tasks-large/gen-add10-v0.json", "name": "add10", "raw": "```python\ndef add10(x):\n    return x + 10\n```"}
+{"task": "../bench/tasks-large/gen-add10-v1.json", "name": "add10", "raw": "```python\ndef add10(x):\n    return x + 10\n```"}
+{"task": "../bench/tasks-large/gen-add10-v2.json", "name": "add10", "raw": "```python\ndef add10(x):\n    return Nat.add(x, 10)\n```"}
+{"task": "../bench/tasks-large/gen-add100-v0.json", "name": "add100", "raw": "```python\ndef add100(x):\n    return x + 100\n```"}
+{"task": "../bench/tasks-large/gen-add100-v1.json", "name": "add100", "raw": "```python\ndef add100(x):\n    return x + 100\n```"}
+{"task": "../bench/tasks-large/gen-add100-v2.json", "name": "add100", "raw": "```python\ndef add100(x):\n    return Nat.add(x, 100)\n```"}
 {"task": "../bench/tasks-large/gen-add2-v0.json", "name": "add2", "raw": "```python\ndef add2(x):\n    return x + 2\n```"}
-{"task": "../bench/tasks-large/gen-add2-v1.json", "name": "add2", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef add2(x):\n    return x + 2\n```"}
-{"task": "../bench/tasks-large/gen-add2-v2.json", "name": "add2", "raw": "```python\ndef add2(x):\n    return x + 2\n```"}
-{"task": "../bench/tasks-large/gen-add3-v0.json", "name": "add3", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef add3(x: Nat) -> Nat:\n    return Nat.add(x, 3)\n```"}
-{"task": "../bench/tasks-large/gen-add3-v1.json", "name": "add3", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef add3(x):\n    return x + 3\n```"}
-{"task": "../bench/tasks-large/gen-add3-v2.json", "name": "add3", "raw": "```python\ndef add3(x):\n    return x + 3\n```"}
-{"task": "../bench/tasks-large/gen-add4-v0.json", "name": "add4", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef add4(x: Nat) -> Nat:\n    return Nat.add(x, 4)\n```"}
-{"task": "../bench/tasks-large/gen-add4-v1.json", "name": "add4", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef add4(x):\n    return x + 4\n```"}
-{"task": "../bench/tasks-large/gen-add4-v2.json", "name": "add4", "raw": "```python\ndef add4(x):\n    return lambda c, x, y: x + c if c else y\n```"}
-{"task": "../bench/tasks-large/gen-add5-v0.json", "name": "add5", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef add5(x: Nat) -> Nat:\n    return Nat.add(x, 5)\n```"}
-{"task": "../bench/tasks-large/gen-add5-v1.json", "name": "add5", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef add5(x):\n    return x + 5\n```"}
-{"task": "../bench/tasks-large/gen-add5-v2.json", "name": "add5", "raw": "```python\ndef add5(x):\n    return x + 5\n```"}
-{"task": "../bench/tasks-large/gen-add7-v0.json", "name": "add7", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef add7(x: Nat) -> Nat:\n    return Nat.add(x, 7)\n```"}
-{"task": "../bench/tasks-large/gen-add7-v1.json", "name": "add7", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef add7(x):\n    return x + 7\n```"}
-{"task": "../bench/tasks-large/gen-add7-v2.json", "name": "add7", "raw": "```python\ndef add7(x):\n    return x + 7\n```"}
-{"task": "../bench/tasks-large/gen-addmax.json", "name": "addmax", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef addmax(a: Nat, b: Nat) -> Nat:\n    return a + b\n```"}
-{"task": "../bench/tasks-large/gen-addmin.json", "name": "addmin", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef addmin(a: Nat, b: Nat) -> Nat:\n    return a + b\n```"}
-{"task": "../bench/tasks-large/gen-atleast1-v0.json", "name": "atleast1", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atleast1(x):\n    return max(x, 1)\n```"}
-{"task": "../bench/tasks-large/gen-atleast1-v1.json", "name": "atleast1", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atleast1(x):\n    return max(x, 1)\n```"}
-{"task": "../bench/tasks-large/gen-atleast1-v2.json", "name": "atleast1", "raw": "```python\ndef atleast1(x):\n    return lambda c, x, y: x if c else y\n```"}
-{"task": "../bench/tasks-large/gen-atleast10-v0.json", "name": "atleast10", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atleast10(x: Nat) -> Nat:\n    return max(x, 10)\n```"}
-{"task": "../bench/tasks-large/gen-atleast10-v1.json", "name": "atleast10", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atleast10(x):\n    return max(x, 10)\n```"}
-{"task": "../bench/tasks-large/gen-atleast10-v2.json", "name": "atleast10", "raw": "```python\ndef atleast10(x):\n    return lambda c, x, y: x if c else y\n```"}
-{"task": "../bench/tasks-large/gen-atleast100-v0.json", "name": "atleast100", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atleast100(x: Nat) -> Nat:\n    return max(x, 100)\n```"}
-{"task": "../bench/tasks-large/gen-atleast100-v1.json", "name": "atleast100", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atleast100(x):\n    return max(x, 100)\n```"}
-{"task": "../bench/tasks-large/gen-atleast100-v2.json", "name": "atleast100", "raw": "```python\ndef atleast100(x):\n    return lambda c, x, y: x if c else y\n```"}
-{"task": "../bench/tasks-large/gen-atleast2-v0.json", "name": "atleast2", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atleast2(x):\n    return max(x, 2)\n```"}
-{"task": "../bench/tasks-large/gen-atleast2-v1.json", "name": "atleast2", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atleast2(x):\n    return max(x, 2)\n```"}
-{"task": "../bench/tasks-large/gen-atleast2-v2.json", "name": "atleast2", "raw": "```python\ndef atleast2(x):\n    return lambda c, x, y: x if c else y\n```"}
-{"task": "../bench/tasks-large/gen-atleast3-v0.json", "name": "atleast3", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atleast3(x: Nat) -> Nat:\n    return max(x, 3)\n```"}
-{"task": "../bench/tasks-large/gen-atleast3-v1.json", "name": "atleast3", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atleast3(x):\n    return max(x, 3)\n```"}
-{"task": "../bench/tasks-large/gen-atleast3-v2.json", "name": "atleast3", "raw": "```python\ndef atleast3(x):\n    return lambda c, x, y: x if c else y\n```"}
-{"task": "../bench/tasks-large/gen-atleast4-v0.json", "name": "atleast4", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atleast4(x: Nat) -> Nat:\n    return max(x, 4)\n```"}
-{"task": "../bench/tasks-large/gen-atleast4-v1.json", "name": "atleast4", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atleast4(x):\n    return max(x, 4)\n```"}
-{"task": "../bench/tasks-large/gen-atleast4-v2.json", "name": "atleast4", "raw": "```python\ndef atleast4(x):\n    return lambda c, x, y: x if c else y\n```"}
-{"task": "../bench/tasks-large/gen-atleast5-v0.json", "name": "atleast5", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atleast5(x: Nat) -> Nat:\n    return max(x, 5)\n```"}
-{"task": "../bench/tasks-large/gen-atleast5-v1.json", "name": "atleast5", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atleast5(x):\n    return max(x, 5)\n```"}
-{"task": "../bench/tasks-large/gen-atleast5-v2.json", "name": "atleast5", "raw": "```python\ndef atleast5(x):\n    return lambda c, x, y: x if c else y\n```"}
-{"task": "../bench/tasks-large/gen-atleast7-v0.json", "name": "atleast7", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atleast7(x: Nat) -> Nat:\n    return max(x, 7)\n```"}
-{"task": "../bench/tasks-large/gen-atleast7-v1.json", "name": "atleast7", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atleast7(x):\n    return max(x, 7)\n```"}
-{"task": "../bench/tasks-large/gen-atleast7-v2.json", "name": "atleast7", "raw": "```python\ndef atleast7(x):\n    return lambda c, x, y: x if c else y\n```"}
-{"task": "../bench/tasks-large/gen-atmost1-v0.json", "name": "atmost1", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atmost1(x):\n    return min(x, 1)\n```"}
-{"task": "../bench/tasks-large/gen-atmost1-v1.json", "name": "atmost1", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atmost1(x):\n    return lambda c, x: x if c else y\n```"}
-{"task": "../bench/tasks-large/gen-atmost1-v2.json", "name": "atmost1", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atmost1(x):\n    return lambda c, x, y: x if c else y\n```"}
-{"task": "../bench/tasks-large/gen-atmost10-v0.json", "name": "atmost10", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atmost10(x: Nat) -> Nat:\n    return min(x, 10)\n```"}
-{"task": "../bench/tasks-large/gen-atmost10-v1.json", "name": "atmost10", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atmost10(x):\n    return min(x, 10)\n```"}
-{"task": "../bench/tasks-large/gen-atmost10-v2.json", "name": "atmost10", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atmost10(x):\n    return lambda p0: p0 + 10\n```\n\nThis function takes an integer `x` and returns `x + 10`, which satisfies the problem's requirements."}
-{"task": "../bench/tasks-large/gen-atmost100-v0.json", "name": "atmost100", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atmost100(x: Nat) -> Nat:\n    return min(x, 100)\n```"}
-{"task": "../bench/tasks-large/gen-atmost100-v1.json", "name": "atmost100", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atmost100(x):\n    return min(x, 100)\n```"}
-{"task": "../bench/tasks-large/gen-atmost100-v2.json", "name": "atmost100", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atmost100(x):\n    return lambda c, x, y: x if c else y\n```"}
-{"task": "../bench/tasks-large/gen-atmost2-v0.json", "name": "atmost2", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atmost2(x):\n    return min(x, 2)\n```"}
-{"task": "../bench/tasks-large/gen-atmost2-v1.json", "name": "atmost2", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atmost2(x):\n    return min(x, 2)\n```"}
-{"task": "../bench/tasks-large/gen-atmost2-v2.json", "name": "atmost2", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atmost2(x):\n    return lambda c, x, y: x if c else y\n```"}
-{"task": "../bench/tasks-large/gen-atmost3-v0.json", "name": "atmost3", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atmost3(x: Nat) -> Nat:\n    return min(x, 3)\n```"}
-{"task": "../bench/tasks-large/gen-atmost3-v1.json", "name": "atmost3", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atmost3(x):\n    return min(x, 3)\n```"}
-{"task": "../bench/tasks-large/gen-atmost3-v2.json", "name": "atmost3", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atmost3(x):\n    return lambda c, x, y: x if c else y\n```"}
-{"task": "../bench/tasks-large/gen-atmost4-v0.json", "name": "atmost4", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atmost4(x: Nat) -> Nat:\n    return min(x, 4)\n```"}
-{"task": "../bench/tasks-large/gen-atmost4-v1.json", "name": "atmost4", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atmost4(x):\n    return min(x, 4)\n```"}
-{"task": "../bench/tasks-large/gen-atmost4-v2.json", "name": "atmost4", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atmost4(x):\n    return lambda c, x, y: x if c else y\n```"}
-{"task": "../bench/tasks-large/gen-atmost5-v0.json", "name": "atmost5", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atmost5(x: Nat) -> Nat:\n    return min(x, 5)\n```"}
-{"task": "../bench/tasks-large/gen-atmost5-v1.json", "name": "atmost5", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atmost5(x):\n    return min(x, 5)\n```"}
-{"task": "../bench/tasks-large/gen-atmost5-v2.json", "name": "atmost5", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atmost5(x):\n    return lambda c, x, y: x if c else y\n```"}
-{"task": "../bench/tasks-large/gen-atmost7-v0.json", "name": "atmost7", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atmost7(x: Nat) -> Nat:\n    return min(x, 7)\n```"}
-{"task": "../bench/tasks-large/gen-atmost7-v1.json", "name": "atmost7", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef atmost7(x):\n    return min(x, 7)\n```"}
-{"task": "../bench/tasks-large/gen-atmost7-v2.json", "name": "atmost7", "raw": "```python\ndef atmost7(x):\n    return lambda c, x, y: x if c else y\n```"}
-{"task": "../bench/tasks-large/gen-clamp-hilo.json", "name": "clamp", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef clamp(x: Nat, lo: Nat, hi: Nat) -> Nat:\n    return max(lo, min(hi, x))\n```"}
-{"task": "../bench/tasks-large/gen-clamp-lohi.json", "name": "clamp", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef clamp(x: Nat, lo: Nat, hi: Nat) -> Nat:\n    return max(lo, min(hi, x))\n```"}
-{"task": "../bench/tasks-large/gen-max3.json", "name": "max3", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef max3(a: Nat, b: Nat, c: Nat) -> Nat:\n    return max(a, b, c)\n```"}
-{"task": "../bench/tasks-large/gen-mul1-v0.json", "name": "mul1", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef mul1(x):\n    return lambda y: x * y\n```"}
-{"task": "../bench/tasks-large/gen-mul1-v1.json", "name": "mul1", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef mul1(x):\n    return lambda c, y: x * y if c else y\n```"}
-{"task": "../bench/tasks-large/gen-mul1-v2.json", "name": "mul1", "raw": "```python\ndef mul1(x):\n    return lambda y: x * y\n```"}
-{"task": "../bench/tasks-large/gen-mul10-v0.json", "name": "mul10", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef mul10(x: Nat) -> Nat:\n    return Nat.mul(x, 10)\n```"}
-{"task": "../bench/tasks-large/gen-mul10-v1.json", "name": "mul10", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef mul10(x):\n    return lambda c, y: x * 10 + y if c else y\n```\n\nThis Python function `mul10` takes an integer `x` as input and returns a lambda function that multiplies `x` by 10 and adds `y` if `c` is true, otherwise it returns `y`."}
-{"task": "../bench/tasks-large/gen-mul10-v2.json", "name": "mul10", "raw": "```python\ndef mul10(x):\n    return x * 10\n```"}
-{"task": "../bench/tasks-large/gen-mul100-v0.json", "name": "mul100", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef mul100(x: Nat) -> Nat:\n    return Nat.mul(x, 100)\n```"}
-{"task": "../bench/tasks-large/gen-mul100-v1.json", "name": "mul100", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef mul100(x: int) -> int:\n    return x * 100\n```"}
-{"task": "../bench/tasks-large/gen-mul100-v2.json", "name": "mul100", "raw": "```python\ndef mul100(x):\n    return x * 100\n```"}
-{"task": "../bench/tasks-large/gen-mul2-v0.json", "name": "mul2", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef mul2(x: Nat) -> Nat:\n    return Nat.mul(x, 2)\n```"}
-{"task": "../bench/tasks-large/gen-mul2-v1.json", "name": "mul2", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef mul2(x):\n    return lambda c, y: x * c if c else y\n```"}
-{"task": "../bench/tasks-large/gen-mul2-v2.json", "name": "mul2", "raw": "```python\ndef mul2(x):\n    return lambda y: x * y\n```"}
-{"task": "../bench/tasks-large/gen-mul3-v0.json", "name": "mul3", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef mul3(x: Nat) -> Nat:\n    return Nat.mul(x, 3)\n```"}
-{"task": "../bench/tasks-large/gen-mul3-v1.json", "name": "mul3", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef mul3(x):\n    return lambda c, y: x * c if c else y\n```"}
-{"task": "../bench/tasks-large/gen-mul3-v2.json", "name": "mul3", "raw": "```python\ndef mul3(x):\n    return lambda c, x, y: x * (c + 1) if c else y\n```"}
-{"task": "../bench/tasks-large/gen-mul4-v0.json", "name": "mul4", "raw": "```python\ndef mul4(x):\n    return lambda y: x * 4\n```"}
-{"task": "../bench/tasks-large/gen-mul4-v1.json", "name": "mul4", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef mul4(x):\n    return lambda c, x: x if c else x\n```"}
-{"task": "../bench/tasks-large/gen-mul4-v2.json", "name": "mul4", "raw": "```python\ndef mul4(x):\n    return lambda c, x, y: x * (c + 1) if c else y\n```\n\nThis function `mul4` takes three parameters `x`, `c`, and `y`, and returns a new function that multiplies `x` by `c` and then adds 1 to the result. If `c` is 0, it returns `y`; otherwise, it returns `x`."}
+{"task": "../bench/tasks-large/gen-add2-v1.json", "name": "add2", "raw": "```python\ndef add2(x):\n    return x + 2\n```"}
+{"task": "../bench/tasks-large/gen-add2-v2.json", "name": "add2", "raw": "```python\ndef add2(x):\n    return Nat.add(x, 2)\n```"}
+{"task": "../bench/tasks-large/gen-add3-v0.json", "name": "add3", "raw": "```python\ndef add3(x):\n    return x + 3\n```"}
+{"task": "../bench/tasks-large/gen-add3-v1.json", "name": "add3", "raw": "```python\ndef add3(x):\n    return x + 3\n```"}
+{"task": "../bench/tasks-large/gen-add3-v2.json", "name": "add3", "raw": "```python\ndef add3(x):\n    return Nat.add(x, 3)\n```"}
+{"task": "../bench/tasks-large/gen-add4-v0.json", "name": "add4", "raw": "```python\ndef add4(x):\n    return x + 4\n```"}
+{"task": "../bench/tasks-large/gen-add4-v1.json", "name": "add4", "raw": "```python\ndef add4(x):\n    return x + 4\n```"}
+{"task": "../bench/tasks-large/gen-add4-v2.json", "name": "add4", "raw": "```python\ndef add4(x):\n    return Nat.add(x, 4)\n```"}
+{"task": "../bench/tasks-large/gen-add5-v0.json", "name": "add5", "raw": "```python\ndef add5(x):\n    return x + 5\n```"}
+{"task": "../bench/tasks-large/gen-add5-v1.json", "name": "add5", "raw": "```python\ndef add5(x):\n    return x + 5\n```"}
+{"task": "../bench/tasks-large/gen-add5-v2.json", "name": "add5", "raw": "```python\ndef add5(x):\n    return Nat.add(x, 5)\n```"}
+{"task": "../bench/tasks-large/gen-add7-v0.json", "name": "add7", "raw": "```python\ndef add7(x):\n    return x + 7\n```"}
+{"task": "../bench/tasks-large/gen-add7-v1.json", "name": "add7", "raw": "```python\ndef add7(x):\n    return x + 7\n```"}
+{"task": "../bench/tasks-large/gen-add7-v2.json", "name": "add7", "raw": "```python\ndef add7(x):\n    return Nat.add(x, 7)\n```"}
+{"task": "../bench/tasks-large/gen-addmax.json", "name": "addmax", "raw": "```python\ndef addmax(a, b):\n    return max(a + b, a, b)\n```"}
+{"task": "../bench/tasks-large/gen-addmin.json", "name": "addmin", "raw": "```python\ndef addmin(a, b):\n    return min(a + b, max(a, b))\n```"}
+{"task": "../bench/tasks-large/gen-atleast1-v0.json", "name": "atleast1", "raw": "```python\ndef atleast1(x):\n    return max(x, 1)\n```"}
+{"task": "../bench/tasks-large/gen-atleast1-v1.json", "name": "atleast1", "raw": "```python\ndef atleast1(x):\n    return max(x, 1)\n```"}
+{"task": "../bench/tasks-large/gen-atleast1-v2.json", "name": "atleast1", "raw": "```python\ndef atleast1(x):\n    return Nat.max(x, 1)\n```"}
+{"task": "../bench/tasks-large/gen-atleast10-v0.json", "name": "atleast10", "raw": "```python\ndef atleast10(x):\n    return max(x, 10)\n```"}
+{"task": "../bench/tasks-large/gen-atleast10-v1.json", "name": "atleast10", "raw": "```python\ndef atleast10(x):\n    return max(x, 10)\n```"}
+{"task": "../bench/tasks-large/gen-atleast10-v2.json", "name": "atleast10", "raw": "```python\ndef atleast10(x):\n    return Nat.max(x, 10)\n```"}
+{"task": "../bench/tasks-large/gen-atleast100-v0.json", "name": "atleast100", "raw": "```python\ndef atleast100(x):\n    return max(x, 100)\n```"}
+{"task": "../bench/tasks-large/gen-atleast100-v1.json", "name": "atleast100", "raw": "```python\ndef atleast100(x):\n    return max(x, 100)\n```"}
+{"task": "../bench/tasks-large/gen-atleast100-v2.json", "name": "atleast100", "raw": "```python\ndef atleast100(x):\n    return Nat.max(100, x)\n```"}
+{"task": "../bench/tasks-large/gen-atleast2-v0.json", "name": "atleast2", "raw": "```python\ndef atleast2(x):\n    return max(x, 2)\n```"}
+{"task": "../bench/tasks-large/gen-atleast2-v1.json", "name": "atleast2", "raw": "```python\ndef atleast2(x):\n    return max(x, 2)\n```"}
+{"task": "../bench/tasks-large/gen-atleast2-v2.json", "name": "atleast2", "raw": "```python\ndef atleast2(x):\n    return Nat.max(2, x)\n```"}
+{"task": "../bench/tasks-large/gen-atleast3-v0.json", "name": "atleast3", "raw": "```python\ndef atleast3(x):\n    return max(x, 3)\n```"}
+{"task": "../bench/tasks-large/gen-atleast3-v1.json", "name": "atleast3", "raw": "```python\ndef atleast3(x):\n    return max(x, 3)\n```"}
+{"task": "../bench/tasks-large/gen-atleast3-v2.json", "name": "atleast3", "raw": "```python\ndef atleast3(x):\n    return Nat.max(3, x)\n```"}
+{"task": "../bench/tasks-large/gen-atleast4-v0.json", "name": "atleast4", "raw": "```python\ndef atleast4(x):\n    return max(x, 4)\n```"}
+{"task": "../bench/tasks-large/gen-atleast4-v1.json", "name": "atleast4", "raw": "```python\ndef atleast4(x):\n    return max(x, 4)\n```"}
+{"task": "../bench/tasks-large/gen-atleast4-v2.json", "name": "atleast4", "raw": "```python\ndef atleast4(x):\n    return Nat.max(x, 4)\n```"}
+{"task": "../bench/tasks-large/gen-atleast5-v0.json", "name": "atleast5", "raw": "```python\ndef atleast5(x):\n    return max(x, 5)\n```"}
+{"task": "../bench/tasks-large/gen-atleast5-v1.json", "name": "atleast5", "raw": "```python\ndef atleast5(x):\n    return max(x, 5)\n```"}
+{"task": "../bench/tasks-large/gen-atleast5-v2.json", "name": "atleast5", "raw": "```python\ndef atleast5(x):\n    return Nat.max(x, 5)\n```"}
+{"task": "../bench/tasks-large/gen-atleast7-v0.json", "name": "atleast7", "raw": "```python\ndef atleast7(x):\n    return max(x, 7)\n```"}
+{"task": "../bench/tasks-large/gen-atleast7-v1.json", "name": "atleast7", "raw": "```python\ndef atleast7(x):\n    return max(x, 7)\n```"}
+{"task": "../bench/tasks-large/gen-atleast7-v2.json", "name": "atleast7", "raw": "```python\ndef atleast7(x):\n    return Nat.max(x, 7)\n```"}
+{"task": "../bench/tasks-large/gen-atmost1-v0.json", "name": "atmost1", "raw": "```python\ndef atmost1(x):\n    return min(x, 1)\n```"}
+{"task": "../bench/tasks-large/gen-atmost1-v1.json", "name": "atmost1", "raw": "```python\ndef atmost1(x):\n    return min(x, 1)\n```"}
+{"task": "../bench/tasks-large/gen-atmost1-v2.json", "name": "atmost1", "raw": "```python\ndef atmost1(x):\n    return Nat.min(x, 1)\n```"}
+{"task": "../bench/tasks-large/gen-atmost10-v0.json", "name": "atmost10", "raw": "```python\ndef atmost10(x):\n    return min(x, 10)\n```"}
+{"task": "../bench/tasks-large/gen-atmost10-v1.json", "name": "atmost10", "raw": "```python\ndef atmost10(x):\n    return min(x, 10)\n```"}
+{"task": "../bench/tasks-large/gen-atmost10-v2.json", "name": "atmost10", "raw": "```python\ndef atmost10(x):\n    return Nat.min(x, 10)\n```"}
+{"task": "../bench/tasks-large/gen-atmost100-v0.json", "name": "atmost100", "raw": "```python\ndef atmost100(x):\n    return min(x, 100)\n```"}
+{"task": "../bench/tasks-large/gen-atmost100-v1.json", "name": "atmost100", "raw": "```python\ndef atmost100(x):\n    return min(x, 100)\n```"}
+{"task": "../bench/tasks-large/gen-atmost100-v2.json", "name": "atmost100", "raw": "```python\ndef atmost100(x):\n    return Nat.min(x, 100)\n```"}
+{"task": "../bench/tasks-large/gen-atmost2-v0.json", "name": "atmost2", "raw": "```python\ndef atmost2(x):\n    return min(x, 2)\n```"}
+{"task": "../bench/tasks-large/gen-atmost2-v1.json", "name": "atmost2", "raw": "```python\ndef atmost2(x):\n    return min(x, 2)\n```"}
+{"task": "../bench/tasks-large/gen-atmost2-v2.json", "name": "atmost2", "raw": "```python\ndef atmost2(x):\n    return Nat.min(x, 2)\n```"}
+{"task": "../bench/tasks-large/gen-atmost3-v0.json", "name": "atmost3", "raw": "```python\ndef atmost3(x):\n    return min(x, 3)\n```"}
+{"task": "../bench/tasks-large/gen-atmost3-v1.json", "name": "atmost3", "raw": "```python\ndef atmost3(x):\n    return min(x, 3)\n```"}
+{"task": "../bench/tasks-large/gen-atmost3-v2.json", "name": "atmost3", "raw": "```python\ndef atmost3(x):\n    return min(x, 3)\n```"}
+{"task": "../bench/tasks-large/gen-atmost4-v0.json", "name": "atmost4", "raw": "```python\ndef atmost4(x):\n    return min(x, 4)\n```"}
+{"task": "../bench/tasks-large/gen-atmost4-v1.json", "name": "atmost4", "raw": "```python\ndef atmost4(x):\n    return min(x, 4)\n```"}
+{"task": "../bench/tasks-large/gen-atmost4-v2.json", "name": "atmost4", "raw": "```python\ndef atmost4(x):\n    return Nat.min(x, 4)\n```"}
+{"task": "../bench/tasks-large/gen-atmost5-v0.json", "name": "atmost5", "raw": "```python\ndef atmost5(x):\n    return min(x, 5)\n```"}
+{"task": "../bench/tasks-large/gen-atmost5-v1.json", "name": "atmost5", "raw": "```python\ndef atmost5(x):\n    return min(x, 5)\n```"}
+{"task": "../bench/tasks-large/gen-atmost5-v2.json", "name": "atmost5", "raw": "```python\ndef atmost5(x):\n    return Nat.min(x, 5)\n```"}
+{"task": "../bench/tasks-large/gen-atmost7-v0.json", "name": "atmost7", "raw": "```python\ndef atmost7(x):\n    return min(x, 7)\n```"}
+{"task": "../bench/tasks-large/gen-atmost7-v1.json", "name": "atmost7", "raw": "```python\ndef atmost7(x):\n    return min(x, 7)\n```"}
+{"task": "../bench/tasks-large/gen-atmost7-v2.json", "name": "atmost7", "raw": "```python\ndef atmost7(x):\n    return Nat.min(x, 7)\n```"}
+{"task": "../bench/tasks-large/gen-clamp-hilo.json", "name": "clamp", "raw": "```python\ndef clamp(x, lo, hi):\n    return max(lo, min(hi, x))\n```"}
+{"task": "../bench/tasks-large/gen-clamp-lohi.json", "name": "clamp", "raw": "```python\ndef clamp(x, lo, hi):\n    return max(lo, min(hi, x))\n```"}
+{"task": "../bench/tasks-large/gen-max3.json", "name": "max3", "raw": "```python\ndef max3(a, b, c):\n    return max(max(a, b), c)\n```"}
+{"task": "../bench/tasks-large/gen-mul1-v0.json", "name": "mul1", "raw": "```python\ndef mul1(x):\n    return x * 1\n```"}
+{"task": "../bench/tasks-large/gen-mul1-v1.json", "name": "mul1", "raw": "```python\ndef mul1(x):\n    return x * 1\n```"}
+{"task": "../bench/tasks-large/gen-mul1-v2.json", "name": "mul1", "raw": "```python\ndef mul1(x):\n    return Nat.mul(x, 1)\n```"}
+{"task": "../bench/tasks-large/gen-mul10-v0.json", "name": "mul10", "raw": "```python\ndef mul10(x):\n    return x * 10\n```"}
+{"task": "../bench/tasks-large/gen-mul10-v1.json", "name": "mul10", "raw": "```python\ndef mul10(x):\n    return x * 10\n```"}
+{"task": "../bench/tasks-large/gen-mul10-v2.json", "name": "mul10", "raw": "```python\ndef mul10(x):\n    return Nat.mul(x, 10)\n```"}
+{"task": "../bench/tasks-large/gen-mul100-v0.json", "name": "mul100", "raw": "```python\ndef mul100(x):\n    return x * 100\n```"}
+{"task": "../bench/tasks-large/gen-mul100-v1.json", "name": "mul100", "raw": "```python\ndef mul100(x):\n    return x * 100\n```"}
+{"task": "../bench/tasks-large/gen-mul100-v2.json", "name": "mul100", "raw": "```python\ndef mul100(x):\n    return Nat.mul(x, 100)\n```"}
+{"task": "../bench/tasks-large/gen-mul2-v0.json", "name": "mul2", "raw": "```python\ndef mul2(x):\n    return x * 2\n```"}
+{"task": "../bench/tasks-large/gen-mul2-v1.json", "name": "mul2", "raw": "```python\ndef mul2(x):\n    return x * 2\n```"}
+{"task": "../bench/tasks-large/gen-mul2-v2.json", "name": "mul2", "raw": "```python\ndef mul2(x):\n    return Nat.mul(x, 2)\n```"}
+{"task": "../bench/tasks-large/gen-mul3-v0.json", "name": "mul3", "raw": "```python\ndef mul3(x):\n    return x * 3\n```"}
+{"task": "../bench/tasks-large/gen-mul3-v1.json", "name": "mul3", "raw": "```python\ndef mul3(x):\n    return x * 3\n```"}
+{"task": "../bench/tasks-large/gen-mul3-v2.json", "name": "mul3", "raw": "```python\ndef mul3(x):\n    return Nat.mul(x, 3)\n```"}
+{"task": "../bench/tasks-large/gen-mul4-v0.json", "name": "mul4", "raw": "```python\ndef mul4(x):\n    return x * 4\n```"}
+{"task": "../bench/tasks-large/gen-mul4-v1.json", "name": "mul4", "raw": "```python\ndef mul4(x):\n    return x * 4\n```"}
+{"task": "../bench/tasks-large/gen-mul4-v2.json", "name": "mul4", "raw": "```python\ndef mul4(x):\n    return Nat.mul(x, 4)\n```"}
 {"task": "../bench/tasks-large/gen-mul5-v0.json", "name": "mul5", "raw": "```python\ndef mul5(x):\n    return x * 5\n```"}
-{"task": "../bench/tasks-large/gen-mul5-v1.json", "name": "mul5", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef mul5(x):\n    return lambda c, y: x * c if c else y\n```"}
-{"task": "../bench/tasks-large/gen-mul5-v2.json", "name": "mul5", "raw": "```python\ndef mul5(x):\n    return lambda c, x, y: x * (c + 1) if c else y\n```\n\nThis function `mul5` takes three parameters: `x`, `c`, and `y`. It returns a new function that multiplies `x` by `c + 1` if `c` is truthy, otherwise it returns `y`."}
-{"task": "../bench/tasks-large/gen-mul7-v0.json", "name": "mul7", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef mul7(x: Nat) -> Nat:\n    return Nat.mul(x, 7)\n```"}
-{"task": "../bench/tasks-large/gen-mul7-v1.json", "name": "mul7", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef mul7(x):\n    return lambda c, y: x if c else y\n```"}
-{"task": "../bench/tasks-large/gen-mul7-v2.json", "name": "mul7", "raw": "```python\ndef mul7(x):\n    return lambda c, x, y: x * (c + 7) if c else y\n```\n\nThis function `mul7` takes three parameters: `x`, `c`, and `y`. It returns a new function that multiplies `x` by `c + 7` if `c` is truthy, otherwise it returns `y`."}
+{"task": "../bench/tasks-large/gen-mul5-v1.json", "name": "mul5", "raw": "```python\ndef mul5(x):\n    return x * 5\n```"}
+{"task": "../bench/tasks-large/gen-mul5-v2.json", "name": "mul5", "raw": "```python\ndef mul5(x):\n    return Nat.mul(x, 5)\n```"}
+{"task": "../bench/tasks-large/gen-mul7-v0.json", "name": "mul7", "raw": "```python\ndef mul7(x):\n    return x * 7\n```"}
+{"task": "../bench/tasks-large/gen-mul7-v1.json", "name": "mul7", "raw": "```python\ndef mul7(x):\n    return x * 7\n```"}
+{"task": "../bench/tasks-large/gen-mul7-v2.json", "name": "mul7", "raw": "```python\ndef mul7(x):\n    return Nat.mul(x, 7)\n```"}
 {"task": "../bench/tasks-large/gen-nat_add.json", "name": "nat_add", "raw": "```python\ndef nat_add(a, b):\n    return a + b\n```"}
-{"task": "../bench/tasks-large/gen-nat_max.json", "name": "nat_max", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef nat_max(a: Nat, b: Nat) -> Nat:\n    return max(a, b)\n```"}
-{"task": "../bench/tasks-large/gen-nat_min.json", "name": "nat_min", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef nat_min(a: Nat, b: Nat) -> Nat:\n    return min(a, b)\n```"}
-{"task": "../bench/tasks-large/gen-nat_mul.json", "name": "nat_mul", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef nat_mul(a: Nat, b: Nat) -> Nat:\n    return a * b\n```"}
-{"task": "../bench/tasks-large/gen-sum3.json", "name": "sum3", "raw": "```python\nfrom typing import *\nfrom collections import *\n\ndef sum3(a: Nat, b: Nat, c: Nat) -> Nat:\n    return a + b + c\n```"}
+{"task": "../bench/tasks-large/gen-nat_max.json", "name": "nat_max", "raw": "```python\ndef nat_max(a, b):\n    return max(a, b)\n```"}
+{"task": "../bench/tasks-large/gen-nat_min.json", "name": "nat_min", "raw": "```python\ndef nat_min(a, b):\n    return min(a, b)\n```"}
+{"task": "../bench/tasks-large/gen-nat_mul.json", "name": "nat_mul", "raw": "```python\ndef nat_mul(a, b):\n    return a * b\n```"}
+{"task": "../bench/tasks-large/gen-sum3.json", "name": "sum3", "raw": "```python\ndef sum3(a, b, c):\n    return a + b + c\n```"}

@@ -8,7 +8,7 @@ so the model never learns a hallucination.
 ## Pipeline
 
 ```
-claw corpus gen --stdlib  ->  corpus.jsonl          (synthetic, hallucination-free)
+claw corpus gen --stdlib  ->  corpus-v4.jsonl        (synthetic, hallucination-free, 1661 examples)
         train.py (LoRA SFT)  ->  claw-lora/           (adapter)
         merge + serve (llama.cpp / vLLM) -> eval on bench/tasks (arm A1)
 ```
@@ -17,16 +17,21 @@ claw corpus gen --stdlib  ->  corpus.jsonl          (synthetic, hallucination-fr
 
 ```bash
 pip install -r requirements.txt
-python train.py --model Qwen/Qwen2.5-Coder-0.5B-Instruct --epochs 3
+python train.py --model Qwen/Qwen2.5-Coder-0.5B-Instruct --epochs 4
 ```
 
 Produces `claw-lora/`. Merge and serve, then run the benchmark against it
 to test the P4 signal: does the Claw-tuned model beat the base model on
 Claw tasks?
 
-## Note
+## Results
 
-This first corpus is small (~335 examples, prompt-augmented) and stdlib-only
-— a proof that the pipeline works end-to-end, not yet a P4-gate winner. The
-real corpus scales with more templates + real usage telemetry (the
-flywheel).
+The current corpus is v4 (`corpus-v4.jsonl`, 1661 examples, all expression
+shapes). The P4 parity gate **passed on 2026-07-05, at both 0.5B and 7B**:
+121/121 (100%) hallucination-free + effect-sound on the reference gate
+(`docs/p4-v3-gate-2026-07-05.md`), and on functional Pass@1 (116 tasks,
+execution-graded, `docs/parity-2026-07-05.md`) the Claw-tuned model scores
+**94%** at both scales — vs JS 89% / Python 56% / Rust 35% / Go 7% at 0.5B,
+and Rust 87% / Go 85% / Python 71% / JS 68% at 7B. The 7B run: train loss
+0.039, ~54 min, ~$0.25. The parity harness is `parity_gen.py` /
+`parity_grade.py` here. Next: scale with real usage telemetry (the flywheel).

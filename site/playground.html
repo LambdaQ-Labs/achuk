@@ -3,107 +3,174 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Claw Playground — hallucination-proof by construction</title>
+<title>Claw Playground — the real engine, in your browser</title>
+<meta name="description" content="Try Claw without installing anything. The playground runs the language's actual type engine, interpreter, and anti-hallucination grammar as WebAssembly — no servers.">
+<link rel="canonical" href="https://clawlang.dev/playground.html">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M6 26 Q10 12 16 6 Q14 16 12 26 Z M13 26 Q17 13 23 7 Q20 17 18 26 Z M19 26 Q23 15 28 10 Q25 19 24 26 Z' fill='%23b45309'/%3E%3C/svg%3E">
 <style>
-  :root { --bg:#0b1020; --panel:#131a2e; --ink:#e8ecf4; --dim:#8b95ad; --accent:#7c9dff; --ok:#59d499; --bad:#ff6b6b; }
-  * { box-sizing:border-box; }
-  body { margin:0; font-family:-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--ink); }
-  header { padding:28px 24px 8px; }
-  h1 { margin:0; font-size:26px; }
-  .sub { color:var(--dim); margin-top:6px; }
-  main { display:grid; grid-template-columns:1fr 1fr; gap:16px; padding:16px 24px 40px; max-width:1100px; }
-  @media (max-width:820px){ main{ grid-template-columns:1fr; } }
-  .panel { background:var(--panel); border:1px solid #222c48; border-radius:12px; padding:16px; }
-  label { display:block; color:var(--dim); font-size:13px; margin-bottom:6px; }
-  input,select { width:100%; padding:10px; border-radius:8px; border:1px solid #2a3654; background:#0e1424; color:var(--ink); font-size:15px; font-family:ui-monospace,monospace; }
-  code,pre { font-family:ui-monospace,SFMono-Regular,monospace; }
-  pre { background:#0e1424; padding:12px; border-radius:8px; overflow:auto; font-size:13px; line-height:1.5; }
-  .cand { padding:6px 8px; border-bottom:1px solid #1c2540; }
-  .cand b { color:var(--accent); }
-  .note { color:var(--dim); font-size:13px; margin-top:10px; }
-  .tag { display:inline-block; background:#1c2540; border-radius:6px; padding:2px 8px; font-size:12px; color:var(--accent); }
-  .hall { margin-top:8px; }
-  .hall .no { color:var(--bad); } .hall .yes { color:var(--ok); }
+:root{
+  --bg:#faf7f2; --panel:#ffffff; --panel2:#f1ece4; --line:#e5ddd0;
+  --ink:#292420; --dim:#6b6259; --acc:#ea580c; --acc2:#c2410c;
+  --copper:#b45309; --good:#15803d; --bad:#b91c1c;
+  --mono:ui-monospace,'SF Mono','Cascadia Code',Menlo,Consolas,monospace;
+  --sans:'Avenir Next','Segoe UI Variable','Segoe UI',-apple-system,BlinkMacSystemFont,sans-serif;
+}
+@media(prefers-color-scheme:dark){
+  :root{--bg:#151210;--panel:#201b17;--panel2:#1a1613;--line:#332c25;
+  --ink:#ede9e4;--dim:#a39a8e;--acc:#fb923c;--acc2:#fdba74;--copper:#e08a2e;--good:#4ade80;--bad:#f87171}
+}
+:root[data-theme="light"]{--bg:#faf7f2;--panel:#ffffff;--panel2:#f1ece4;--line:#e5ddd0;--ink:#292420;--dim:#6b6259;--acc:#ea580c;--acc2:#c2410c;--copper:#b45309;--good:#15803d;--bad:#b91c1c}
+:root[data-theme="dark"]{--bg:#151210;--panel:#201b17;--panel2:#1a1613;--line:#332c25;--ink:#ede9e4;--dim:#a39a8e;--acc:#fb923c;--acc2:#fdba74;--copper:#e08a2e;--good:#4ade80;--bad:#f87171}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.6}
+a{color:var(--acc);text-decoration:none} a:hover{text-decoration:underline}
+.wrap{max-width:1100px;margin:0 auto;padding:0 22px}
+header{padding:14px 0;border-bottom:1px solid var(--line)}
+header .wrap{display:flex;align-items:center;gap:10px}
+.logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:18px;color:var(--ink)}
+header nav{margin-left:auto;display:flex;gap:18px;font-size:14px}
+header nav a{color:var(--dim)}
+h1{font-size:26px;letter-spacing:-.02em;margin:26px 0 4px}
+p.sub{color:var(--dim);margin-bottom:8px}
+.status{font-family:var(--mono);font-size:12.5px;color:var(--dim);margin-bottom:20px}
+.status .ok{color:var(--good)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;padding-bottom:48px}
+@media(max-width:880px){.grid{grid-template-columns:1fr}}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.box h2{font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);padding:10px 14px;border-bottom:1px solid var(--line);background:var(--panel2);display:flex;align-items:center;gap:10px}
+.box h2 .hint{font-weight:400;text-transform:none;letter-spacing:0;margin-left:auto;font-size:12px}
+textarea,input[type=text]{width:100%;border:none;background:var(--panel);color:var(--ink);font-family:var(--mono);font-size:13px;line-height:1.6;padding:12px 14px;resize:vertical}
+textarea:focus,input:focus{outline:2px solid var(--acc);outline-offset:-2px}
+.out{font-family:var(--mono);font-size:13px;line-height:1.6;padding:12px 14px;white-space:pre-wrap;word-break:break-word;min-height:44px;max-height:300px;overflow:auto}
+.out.good{color:var(--good)} .out.bad{color:var(--bad)}
+.row{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--line);flex-wrap:wrap;align-items:center}
+button{font:600 13.5px var(--sans);background:var(--acc);border:none;color:#fff;padding:8px 16px;border-radius:7px;cursor:pointer}
+:root[data-theme="dark"] button{color:#1f1409}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) button{color:#1f1409}}
+button:hover{background:var(--acc2)}
+button.ghost{background:transparent;color:var(--acc);border:1.5px solid var(--line)}
+button:focus-visible{outline:2px solid var(--copper);outline-offset:2px}
+.full{grid-column:1 / -1}
+.mini{font-size:12.5px;color:var(--dim)}
 </style>
 </head>
 <body>
-<header>
-  <h1>🐾 Claw Playground</h1>
-  <div class="sub">Type-directed candidates + the decode grammar that makes out-of-scope API calls <b>ungeneratable</b>. Runs entirely in your browser — a faithful JS mirror of the Rust <code>claw-cdb</code> / <code>claw-constraint</code>.</div>
-</header>
-<main>
-  <div class="panel">
-    <label>Target type (the "hole" you're filling)</label>
-    <input id="ty" value="Nat, Nat -> a" spellcheck="false">
-    <div class="note">Type variables (lowercase) match anything. Try <code>Nat -&gt; Bool</code>, <code>Str -&gt; Nat</code>, <code>List a -&gt; Nat</code>.</div>
-    <h3>Candidates <span class="tag">only real, in-scope symbols</span></h3>
-    <div id="cands"></div>
-    <div class="hall" id="hall"></div>
-  </div>
-  <div class="panel">
-    <h3>Generation grammar (GBNF) <span class="tag">hallucination = ungeneratable</span></h3>
-    <div class="note">The model can only emit these symbol names. A call that isn't in scope matches no rule — it literally cannot be typed.</div>
-    <pre id="gbnf"></pre>
-  </div>
-</main>
-<script>
-// A demo stdlib scope (mirror of corpus/src/lib.rs stdlib_cdb()).
-const SCOPE = [
-  ["Nat.add","Nat, Nat -> Nat"],["Nat.sub","Nat, Nat -> Nat"],["Nat.mul","Nat, Nat -> Nat"],
-  ["Nat.max","Nat, Nat -> Nat"],["Nat.min","Nat, Nat -> Nat"],["Nat.inc","Nat -> Nat"],
-  ["Nat.isZero","Nat -> Bool"],["Nat.eq","Nat, Nat -> Bool"],["Nat.toStr","Nat -> Str"],
-  ["Str.concat","Str, Str -> Str"],["Str.len","Str -> Nat"],["Str.upper","Str -> Str"],
-  ["Bool.and","Bool, Bool -> Bool"],["Bool.not","Bool -> Bool"],
-  ["List.len","List a -> Nat"],["List.head","List a -> Maybe a"],["List.reverse","List a -> List a"],
-];
-// Tiny structural type + unification (mirror of claw-core).
-function parseTy(s){
-  s=s.trim();
-  const arrow=splitTop(s,"->");
-  if(arrow){ const params=splitTop(arrow[0],",")||[arrow[0]]; return {fn:[params.map(parseAtom), parseTy(arrow[1])]}; }
-  return parseAtom(s);
-}
-function parseAtom(s){ s=s.trim(); if(s.startsWith("(")&&s.endsWith(")"))return parseTy(s.slice(1,-1));
-  const parts=s.split(/\s+/); const head=parts[0];
-  if(parts.length>1) return {app:[head, parts.slice(1).map(parseAtom)]};
-  return /^[a-z]/.test(head)?{var:head}:{named:head}; }
-function splitTop(s,sep){ let d=0,i=0; const out=[]; let last=0; let found=false;
-  while(i<s.length){ const c=s[i]; if(c==="(")d++; else if(c===")")d--;
-    else if(d===0 && s.startsWith(sep,i)){ if(sep==="->"){return [s.slice(0,i), s.slice(i+2)];} out.push(s.slice(last,i)); last=i+sep.length; i+=sep.length-1; found=true; }
-    i++; }
-  if(sep==="->")return null; out.push(s.slice(last)); return found?out:null; }
-function unify(a,b,s={}){ a=res(a,s); b=res(b,s);
-  if(a.var){ s[a.var]=b; return s;} if(b.var){ s[b.var]=a; return s;}
-  if(a.named&&b.named) return a.named===b.named?s:null;
-  if(a.app&&b.app){ if(a.app[0]!==b.app[0]||a.app[1].length!==b.app[1].length)return null; for(let i=0;i<a.app[1].length;i++){s=unify(a.app[1][i],b.app[1][i],s); if(!s)return null;} return s;}
-  if(a.fn&&b.fn){ if(a.fn[0].length!==b.fn[0].length)return null; for(let i=0;i<a.fn[0].length;i++){s=unify(a.fn[0][i],b.fn[0][i],s); if(!s)return null;} return unify(a.fn[1],b.fn[1],s);}
-  return null; }
-function res(t,s){ return t.var&&s[t.var]?res(s[t.var],s):t; }
 
-function render(){
-  const q=parseTy(document.getElementById("ty").value);
-  const cands=SCOPE.filter(([n,sig])=>unify(q,parseTy(sig)));
-  document.getElementById("cands").innerHTML = cands.length
-    ? cands.map(([n,sig])=>`<div class="cand"><b>${n}</b> : ${sig}</div>`).join("")
-    : `<div class="cand" style="color:var(--dim)">no in-scope symbol has this type</div>`;
-  // hallucination demo
-  document.getElementById("hall").innerHTML =
-    `<div class="no">✗ <code>generate_nonce()</code> — not in scope → <b>ungeneratable</b></div>`+
-    (cands.length?`<div class="yes">✓ ${cands.map(c=>c[0]).join(", ")} — real, emittable</div>`:``);
-  // grammar
-  const alt = cands.length ? cands.map(([n])=>`"\\"${n}\\""`).join(" | ") : "(none)";
-  document.getElementById("gbnf").textContent =
-`root      ::= "[" def "]"
-expr      ::= evar | eapp | elit
-evar      ::= "{" "\\"Var\\"" ":" varname "}"
-scopename ::= ${alt}
-varname   ::= scopename | paramname
-paramname ::= "\\"p0\\"" | "\\"p1\\"" | ...   # fixed pool, no free lowercase
-# a name that is neither a scope symbol nor a pool param
-# matches no alternative -> the model cannot type it.`;
+<header>
+  <div class="wrap">
+    <a class="logo" href="index.html">
+      <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true"><path d="M6 26 Q10 12 16 6 Q14 16 12 26 Z M13 26 Q17 13 23 7 Q20 17 18 26 Z M19 26 Q23 15 28 10 Q25 19 24 26 Z" fill="#b45309"/></svg>
+      Claw <span style="color:var(--dim);font-weight:400">Playground</span>
+    </a>
+    <nav><a href="index.html">Home</a><a href="https://github.com/LambdaQ-Labs/claw">GitHub</a></nav>
+  </div>
+</header>
+
+<div class="wrap">
+  <h1>The real engine, in your browser</h1>
+  <p class="sub">This is not a demo shell — it's Claw's actual type engine, interpreter, and
+  anti-hallucination grammar compiled to WebAssembly. Nothing leaves your machine.</p>
+  <div class="status" id="status">loading engine…</div>
+
+  <div class="grid">
+    <div class="box">
+      <h2>1 · The project's code map <span class="hint">what exists (name : type)</span></h2>
+      <textarea id="scope" rows="8" spellcheck="false" aria-label="scope JSON"></textarea>
+      <div class="row">
+        <button id="load">Load scope</button>
+        <span class="mini" id="scopeinfo"></span>
+      </div>
+    </div>
+
+    <div class="box">
+      <h2>2 · Ask the map <span class="hint">what an AI calls instead of guessing</span></h2>
+      <input type="text" id="query" value="Nat, Nat -> Nat" spellcheck="false" aria-label="type query">
+      <div class="row"><button id="find">Find candidates</button>
+        <button class="ghost" id="showsyms">All symbols</button>
+        <button class="ghost" id="showgrammar">Decode grammar</button></div>
+      <div class="out" id="qout"></div>
+    </div>
+
+    <div class="box full">
+      <h2>3 · A definition, as the AI writes it <span class="hint">Def-JSON — the machine protocol</span></h2>
+      <textarea id="defs" rows="7" spellcheck="false" aria-label="Def-JSON"></textarea>
+      <div class="row">
+        <button id="check">Check it</button>
+        <button class="ghost" id="renderb">Show as Claw code</button>
+        <span class="mini">then run it:</span>
+        <input type="text" id="callname" value="atleast10" style="width:130px;border:1.5px solid var(--line);border-radius:6px" aria-label="function to call">
+        <input type="text" id="callargs" value="[3]" style="width:90px;border:1.5px solid var(--line);border-radius:6px" aria-label="arguments">
+        <button id="runb">Run</button>
+        <button class="ghost" id="sabotage" title="swap Nat.max for an invented Nat.clamp and watch the check catch it">Sabotage it</button>
+      </div>
+      <div class="out" id="dout"></div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import init, { set_scope, symbols, candidates, grammar, check_defs, render, run } from "./pkg/claw_play.js";
+
+const $ = id => document.getElementById(id);
+
+const SCOPE = JSON.stringify([
+  {name:"Nat.add", ty:"Nat, Nat -> Nat"},
+  {name:"Nat.mul", ty:"Nat, Nat -> Nat"},
+  {name:"Nat.max", ty:"Nat, Nat -> Nat"},
+  {name:"Nat.min", ty:"Nat, Nat -> Nat"},
+  {name:"Nat.isZero", ty:"Nat -> Bool"},
+  {name:"Str.upper", ty:"Str -> Str"},
+  {name:"File.read!", ty:"Str -> Str", effects:["Fs"]},
+  {name:"Stdout.line!", ty:"Str -> Unit", effects:["Stdout"]}
+], null, 1);
+
+const DEFS = JSON.stringify([{
+  name:"atleast10",
+  expr:{Lam:{params:["p0"],body:{App:{func:{Var:"Nat.max"},args:[{Var:"p0"},{Lit:{Int:10}}]}}}},
+  ty:{Fn:[[{Named:"Nat"}],{Named:"Nat"}]}, effects:[], deprecated:false, doc:""
+}], null, 1);
+
+function show(el, text, cls){ el.textContent = text; el.className = "out" + (cls ? " " + cls : ""); }
+
+async function main(){
+  await init();
+  $("scope").value = SCOPE;
+  $("defs").value = DEFS;
+  const n = set_scope($("scope").value);
+  $("status").innerHTML = '<span class="ok">engine ready</span> — claw-core + claw-constraint, 328 KB of WebAssembly, zero servers';
+  $("scopeinfo").textContent = n + " symbols loaded";
+
+  $("load").onclick = () => {
+    try { $("scopeinfo").textContent = set_scope($("scope").value) + " symbols loaded"; }
+    catch(e){ $("scopeinfo").textContent = e; }
+  };
+  $("find").onclick = () => {
+    try { show($("qout"), candidates($("query").value)); }
+    catch(e){ show($("qout"), String(e), "bad"); }
+  };
+  $("showsyms").onclick = () => show($("qout"), symbols());
+  $("showgrammar").onclick = () => show($("qout"), grammar());
+  $("check").onclick = () => {
+    try {
+      const r = check_defs($("defs").value);
+      show($("dout"), r, r.startsWith("OK") ? "good" : "bad");
+    } catch(e){ show($("dout"), String(e), "bad"); }
+  };
+  $("renderb").onclick = () => {
+    try { show($("dout"), render($("defs").value)); }
+    catch(e){ show($("dout"), String(e), "bad"); }
+  };
+  $("runb").onclick = () => {
+    try { show($("dout"), $("callname").value + "(" + JSON.parse($("callargs").value).join(", ") + ") = " + run($("defs").value, $("callname").value, $("callargs").value), "good"); }
+    catch(e){ show($("dout"), String(e), "bad"); }
+  };
+  $("sabotage").onclick = () => {
+    $("defs").value = $("defs").value.replace(/Nat\.max/g, "Nat.clamp");
+    $("check").click();
+  };
 }
-document.getElementById("ty").addEventListener("input", render);
-render();
+main().catch(e => $("status").textContent = "engine failed to load: " + e);
 </script>
+
 </body>
 </html>

@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased (v0.1.1) — 2026-07-05
+
+### Research
+- **Reference gate at 100%:** the tuned model is **121/121 hallucination-free
+  + effect-sound** on the 121-task gate, at both 0.5B and 7B. See
+  `docs/p4-v3-gate-2026-07-05.md`.
+- **P4 parity gate passed — at both scales** (functional Pass@1, 116 tasks,
+  execution-graded, same model per row; `docs/parity-2026-07-05.md`):
+  - 0.5B: Claw-tuned **94%** vs JS 89%, Python 56%, Rust 35%, Go 7%.
+  - 7B: Claw-tuned **94%** (110/116) vs Rust 87%, Go 85%, Python 71%, JS 68%.
+    Train loss 0.039, ~54 min, ~$0.25.
+- **Corpus v4** (`train/corpus-v4.jsonl`, 1661 examples) covering all
+  expression shapes.
+- **A2 grammar upgrades:** sibling calls + `If`/`Let`/`Match`/`Tag`
+  expression forms in the decode grammar.
+- **Held-out task set** (`bench/tasks-holdout/`, 25 tasks) and
+  **real-compile grading** (every graded solution goes through `clawc`).
+
+### Added
+- CLI: `claw defs-check`, `claw defs-grade`, `claw task-grammar`,
+  `claw telemetry (status|share|clear)`, `claw upgrade`.
+- MCP: two new tools — `claw_render` (Def-JSON → `.claw` source) and
+  `claw_check` (real-compile with structured errors) — five total.
+- **VS Code extension** (`editors/vscode`): tmLanguage grammar + snippets,
+  packaged vsix.
+- **Website** (`site/`, clawlang.dev).
+- **Telemetry**: opt-in crate + collection worker.
+- **Registry + playground plan**: `docs/registry-playground-plan.md`.
+
 ## v0.1.0 — first downloadable release (2026-07-04)
 
 The release where Claw becomes something you can **download and build with**,

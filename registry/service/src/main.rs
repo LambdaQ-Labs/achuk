@@ -20,16 +20,18 @@ use sqlx::{postgres::PgPoolOptions, PgPool, Row};
 use std::path::PathBuf;
 
 #[derive(Clone)]
-struct AppState {
-    pool: PgPool,
-    blobs: PathBuf,
-    base_url: String,
+pub struct AppState {
+    pub pool: PgPool,
+    pub blobs: PathBuf,
+    pub base_url: String,
 }
 
 type ApiResult = Result<Json<Value>, (StatusCode, String)>;
 fn err(c: StatusCode, m: impl ToString) -> (StatusCode, String) {
     (c, m.to_string())
 }
+
+mod ui;
 
 #[tokio::main]
 async fn main() {
@@ -65,7 +67,8 @@ async fn main() {
 
     let state = AppState { pool, blobs, base_url };
     let app = Router::new()
-        .route("/", get(index))
+        .route("/", get(ui::index_html))
+        .route("/p/:name", get(ui::package_html))
         .route("/publish", post(publish))
         .route("/packages/:name", get(package_meta))
         .route("/b/:filename", get(serve_blob)) // the compiler fetches this
@@ -227,33 +230,3 @@ async fn serve_blob(State(st): State<AppState>, Path(filename): Path<String>) ->
     }
 }
 
-/// `GET /` — a minimal registry index (npmjs-style listing).
-async fn index(State(st): State<AppState>) -> Html<String> {
-    let rows = sqlx::query(
-        "SELECT DISTINCT ON (name) name, version, size FROM packages ORDER BY name, version DESC",
-    )
-    .fetch_all(&st.pool)
-    .await
-    .unwrap_or_default();
-    let mut list = String::new();
-    for r in &rows {
-        let n: String = r.get("name");
-        let v: String = r.get("version");
-        let s: i64 = r.get("size");
-        list.push_str(&format!(
-            "<li><code>{n}</code> <span>{v}</span> <em>{s} bytes</em> — <code>claw add {n}</code></li>"
-        ));
-    }
-    if list.is_empty() {
-        list = "<li><em>no packages yet — `claw publish` one</em></li>".into();
-    }
-    Html(format!(
-        "<!doctype html><meta charset=utf8><title>Claw registry</title>\
-         <style>body{{font:16px system-ui;max-width:720px;margin:3rem auto}}\
-         li{{margin:.4rem 0}}span{{color:#888}}em{{color:#aaa;font-size:.85em}}</style>\
-         <h1>🐾 Claw registry</h1><p>{} package(s). Publish with <code>claw publish</code>, \
-         install with <code>claw add &lt;name&gt;</code>.</p><ul>{}</ul>",
-        rows.len(),
-        list
-    ))
-}

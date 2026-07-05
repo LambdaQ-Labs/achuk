@@ -537,9 +537,29 @@ fn index_cmd(db_path: &Path, args: &[String]) -> anyhow::Result<()> {
     let files = claw_files(&root);
     anyhow::ensure!(!files.is_empty(), "no .claw files under {}", root.display());
 
-    // Fresh store each index.
+    // Fresh store each index — but package definitions (installed by
+    // `claw add`, marked by their doc provenance) must SURVIVE a re-index,
+    // or `claw mcp install` would silently unlearn every dependency.
+    let mut preserved: Vec<(String, Def)> = Vec::new();
+    if let Ok(old) = Cdb::open(db_path) {
+        for (n, h) in old.symbols().unwrap_or_default() {
+            if let Ok(d) = old.get(&h) {
+                if d.doc.starts_with("from package ") {
+                    preserved.push((n, d));
+                }
+            }
+        }
+    }
     let _ = std::fs::remove_file(db_path);
     let mut cdb = Cdb::open(db_path)?;
+    for (n, d) in &preserved {
+        if let Ok(h) = cdb.put(d) {
+            let _ = cdb.bind(n, &h);
+        }
+    }
+    if !preserved.is_empty() {
+        eprintln!("  kept {} package definition(s)", preserved.len());
+    }
     let (mut ok, mut total) = (0usize, 0usize);
     for f in &files {
         match ingest(&mut cdb, f) {

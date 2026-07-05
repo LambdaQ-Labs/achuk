@@ -100,7 +100,13 @@ for name, op, desc in TRIPLES:
 CLAMPISH = [
     ("bound", ("x", "lo", "hi")), ("restrict", ("v", "low", "high")),
     ("between", ("n", "least", "most")), ("limit", ("x", "floor", "ceil")),
+    ("confine", ("x", "lo", "hi")), ("pin", ("value", "lo", "hi")),
+    ("hold_within", ("n", "lo", "hi")), ("snap_range", ("x", "min", "max")),
 ]
+# Two phrasings per name: the compositional spell-out and the bench-style
+# "clamps X into [lo, hi]" wording (v3 re-gate showed the model regresses to
+# a hallucinated Nat.clamp exactly when it sees the "clamps into" phrasing
+# it never trained on — the names stay disjoint from the bench's `clamp`).
 for name, ns in CLAMPISH:
     for flip in (False, True):
         if flip:
@@ -109,11 +115,15 @@ for name, ns in CLAMPISH:
         else:
             body = app("Nat.min", [app("Nat.max", [var("p0"), var("p1")]), var("p2")])
             how = f"computes Nat.min of (Nat.max of {ns[0]} and {ns[1]}) and {ns[2]}"
-        prompt = (f"Define `{name}` : Nat, Nat, Nat -> Nat (parameters p0, p1, p2 "
-                  f"named {ns[0]}, {ns[1]}, {ns[2]}) that keeps {ns[0]} within "
-                  f"[{ns[1]}, {ns[2]}]: it {how}. Use only in-scope symbols.")
-        emit(prompt, d(name, lam(["p0", "p1", "p2"], body), fn_ty(3)),
-             ["Nat.max", "Nat.min"])
+        spelled = (f"Define `{name}` : Nat, Nat, Nat -> Nat (parameters p0, p1, p2 "
+                   f"named {ns[0]}, {ns[1]}, {ns[2]}) that keeps {ns[0]} within "
+                   f"[{ns[1]}, {ns[2]}]: it {how}. Use only in-scope symbols.")
+        clampy = (f"Define `{name}` : Nat, Nat, Nat -> Nat (parameters p0, p1, p2 "
+                  f"named {ns[0]}, {ns[1]}, {ns[2]}) that clamps {ns[0]} into "
+                  f"[{ns[1]}, {ns[2]}]. Assume {ns[1]} <= {ns[2]}. Use only in-scope symbols.")
+        defs = d(name, lam(["p0", "p1", "p2"], body), fn_ty(3))
+        emit(spelled, defs, ["Nat.max", "Nat.min"])
+        emit(clampy, defs, ["Nat.max", "Nat.min"])
 
 # --- Class D: platform effects under bench-style phrasing -------------------
 # The sys platform's hosted effects. Names are disjoint from the bench's

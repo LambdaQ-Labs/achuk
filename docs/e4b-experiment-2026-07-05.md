@@ -137,3 +137,53 @@ Unsettled — but the path to settle it is now clear and cheap:
 Net: keep shipping the 0.5B in v0.1.0. Settle v0.2.0 with one clean
 unsloth A/B (Coder-3B vs Qwen3.5-4B) plus an A2 pass, then decide. Total
 spend on this exploration: ~$0.70.
+---
+
+# Settled via the proven (unsloth) pipeline — the real bottleneck is the corpus
+
+Re-ran both Qwen models through unsloth (fixes the train.py 4-bit adapter
+bug; unsloth's newer transformers loads Qwen3.5). Final, fair 4-way on the
+held-out set:
+
+| model (holdout 25, A1) | base clean | tuned clean | reasoning? |
+|---|---|---|---|
+| 0.5B Qwen-Coder (shipped) | ~0% | 76% | no |
+| Qwen2.5-Coder-3B | 52% | **76%** | no |
+| Gemma 4 E4B | 56% | **88%** | yes |
+| Qwen3.5-4B (no-think) | 44% | 44% ⚠ | reasoning |
+
+(Coder-3B via unsloth = 100% gate / 76% holdout, confirming the earlier
+16% collapse was purely the train.py 4-bit bug. Qwen3.5-4B's base==tuned
+44% means the adapter had ~no effect — likely a thinking-mode leak eating
+the token budget even with enable_thinking=False; a broken data point, not
+a fair score, and it is a reasoning model anyway.)
+
+## The finding that actually decides v0.2.0
+
+**Model size is not the lever. The corpus is the ceiling.** The 0.5B and
+the 3B — a 6× size jump — land on the *identical* 76% held-out clean. That
+is corpus-v4 telling us its lessons top out around 76% on novel tasks, no
+matter how big the student. The only arm that broke the ceiling was E4B at
+88%, and it did so by **reasoning** its way past the corpus — the one
+mechanism that also fights our grammar constraint.
+
+So the trade for a bundled 3B is bad: **5× the download for zero held-out
+gain over the 0.5B we already ship.** And the model that *does* gain (E4B)
+is disqualified for the reasoning trace.
+
+## Recommendation for v0.2.0
+
+1. **Do not bump the bundled model to 3-4B yet.** No held-out payoff.
+   Keep shipping the 506 MB 0.5B in v0.1.x.
+2. **Spend the effort on the corpus, not parameters.** More diverse,
+   less-repetitive tasks (records, strings, nested effects, real
+   compositions) is the lever that moves the 76% ceiling — for every model
+   size at once.
+3. **Turn on the A2 grammar path for whatever ships.** With capable bases
+   (52-56% even untrained), the remaining errors are structural JSON slips
+   that GBNF eliminates outright — a guarantee, not a training gamble.
+4. If a bigger tier is ever wanted, the only proven route to >76% is a
+   reasoning model with the trace suppressed or grammar-accommodated —
+   worth a dedicated experiment, not a default.
+
+Total spend across the whole model hunt (E4B + two Qwen A/Bs): ~$1.30.

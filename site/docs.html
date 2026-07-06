@@ -113,8 +113,9 @@ fine-tuned to write Achuk, and the guardrails that verify every line it produces
   <li><code>achuk-lsp</code> — editor language server</li>
   <li><code>achuk-infer</code> + <code>model/achuk-0.5b-q8.gguf</code> — the bundled AI model and its inference engine</li>
 </ul>
-<p>Update any time with <code>achuk upgrade</code>. Windows: download the zip from
-<a href="https://github.com/LambdaQ-Labs/achuk/releases">GitHub Releases</a> and add <code>bin\</code> to PATH.</p>
+<p>Update any time with <code>achuk upgrade</code>.</p>
+<p><b>Windows</b> (PowerShell — no admin needed):</p>
+<pre>irm https://achuk.dev/install.ps1 | iex</pre>
 <div class="callout"><p><b>Linux note:</b> <code>achuk run</code> (compile-and-execute) needs a system
 linker — <code>apt install binutils</code> covers it. <code>achuk check</code> and everything else need nothing.</p></div>
 </section>

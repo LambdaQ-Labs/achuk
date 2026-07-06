@@ -20,7 +20,7 @@ arch="$(uname -m)"
 case "$os" in
   Darwin) os="macos" ;;
   Linux)  os="linux" ;;
-  *) err "unsupported OS: $os (macOS and Linux only for now)" ;;
+  *) err "unsupported OS: $os — on Windows run in PowerShell: irm https://achuk.dev/install.ps1 | iex" ;;
 esac
 case "$arch" in
   arm64|aarch64) arch="arm64" ;;

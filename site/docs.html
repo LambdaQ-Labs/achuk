@@ -3,24 +3,26 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <title>Achuk documentation — install, the AI, packages, CLI reference</title>
 <meta name="description" content="Everything you need to use Achuk: one-command install, achuk ai (generate verified code), the code database, MCP setup for Claude/Cursor, publishing packages, and the full CLI reference.">
 <link rel="canonical" href="https://achuk.dev/docs.html">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M6 26 Q10 12 16 6 Q14 16 12 26 Z M13 26 Q17 13 23 7 Q20 17 18 26 Z M19 26 Q23 15 28 10 Q25 19 24 26 Z' fill='%23b45309'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%23c75b39' stroke-width='3' stroke-dasharray='52 17' stroke-linecap='round' transform='rotate(-42 16 16)'/%3E%3Ccircle cx='16' cy='16' r='3.6' fill='%23c75b39'/%3E%3C/svg%3E">
 <style>
 :root{
-  --bg:#faf7f2; --panel:#ffffff; --panel2:#f1ece4; --line:#e5ddd0;
-  --ink:#292420; --dim:#6b6259; --acc:#ea580c; --acc2:#c2410c;
-  --copper:#b45309; --good:#15803d; --bad:#b91c1c;
+  --bg:#faf6ec; --panel:#fffdf7; --panel2:#f0e9d8; --line:#e4d8c4;
+  --ink:#1a1814; --dim:#6b6358; --acc:#c75b39; --acc2:#a84a2c;
+  --copper:#c75b39; --good:#15803d; --bad:#b91c1c;
   --mono:ui-monospace,'SF Mono','Cascadia Code',Menlo,Consolas,monospace;
-  --sans:'Avenir Next','Segoe UI Variable','Segoe UI',-apple-system,BlinkMacSystemFont,sans-serif;
+  --sans:'Inter',system-ui,-apple-system,sans-serif;
+  --serif:'Fraunces',Georgia,serif;
 }
 @media(prefers-color-scheme:dark){
-  :root{--bg:#151210;--panel:#201b17;--panel2:#1a1613;--line:#332c25;
-  --ink:#ede9e4;--dim:#a39a8e;--acc:#fb923c;--acc2:#fdba74;--copper:#e08a2e;--good:#4ade80;--bad:#f87171}
+  :root{--bg:#1a1814;--panel:#242019;--panel2:#1f1b15;--line:#3a3428;
+  --ink:#e4d8c4;--dim:#a89e8c;--acc:#e07a52;--acc2:#e89b78;--copper:#e07a52;--good:#4ade80;--bad:#f87171}
 }
-:root[data-theme="light"]{--bg:#faf7f2;--panel:#ffffff;--panel2:#f1ece4;--line:#e5ddd0;--ink:#292420;--dim:#6b6259;--acc:#ea580c;--acc2:#c2410c;--copper:#b45309;--good:#15803d;--bad:#b91c1c}
-:root[data-theme="dark"]{--bg:#151210;--panel:#201b17;--panel2:#1a1613;--line:#332c25;--ink:#ede9e4;--dim:#a39a8e;--acc:#fb923c;--acc2:#fdba74;--copper:#e08a2e;--good:#4ade80;--bad:#f87171}
+:root[data-theme="light"]{--bg:#faf6ec;--panel:#fffdf7;--panel2:#f0e9d8;--line:#e4d8c4;--ink:#1a1814;--dim:#6b6358;--acc:#c75b39;--acc2:#a84a2c;--copper:#c75b39;--good:#15803d;--bad:#b91c1c}
+:root[data-theme="dark"]{--bg:#1a1814;--panel:#242019;--panel2:#1f1b15;--line:#3a3428;--ink:#e4d8c4;--dim:#a89e8c;--acc:#e07a52;--acc2:#e89b78;--copper:#e07a52;--good:#4ade80;--bad:#f87171}
 *{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:smooth;scroll-padding-top:70px}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
@@ -39,7 +41,7 @@ header nav a{color:var(--dim)}
 .side a{display:block;color:var(--dim);padding:3.5px 0}
 .side a:hover{color:var(--acc);text-decoration:none}
 main{padding:28px 0 80px;min-width:0}
-h1{font-size:32px;letter-spacing:-.02em;margin-bottom:8px}
+h1{font-family:var(--serif);font-size:32px;letter-spacing:-.02em;margin-bottom:8px}
 .lead{color:var(--dim);font-size:17px;max-width:44em;margin-bottom:14px}
 section{margin-top:52px;border-top:1px solid var(--line);padding-top:28px}
 h2{font-size:24px;letter-spacing:-.015em;margin-bottom:12px}
@@ -66,7 +68,7 @@ tr.win td{color:var(--good);font-weight:600}
 <header>
   <div class="hwrap">
     <a class="logo" href="index.html">
-      <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true"><path d="M6 26 Q10 12 16 6 Q14 16 12 26 Z M13 26 Q17 13 23 7 Q20 17 18 26 Z M19 26 Q23 15 28 10 Q25 19 24 26 Z" fill="#b45309"/></svg>
+      <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="11" fill="none" stroke="#c75b39" stroke-width="3" stroke-dasharray="52 17" stroke-linecap="round" transform="rotate(-42 16 16)"/><circle cx="16" cy="16" r="3.6" fill="#c75b39"/></svg>
       Achuk <span style="color:var(--dim);font-weight:400">Docs</span>
     </a>
     <nav><a href="index.html">Home</a><a href="playground.html">Playground</a><a href="https://github.com/LambdaQ-Labs/achuk">GitHub</a></nav>

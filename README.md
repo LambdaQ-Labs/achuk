@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🐾 Achuk
+<img src="assets/achuk-logo.svg" width="88" alt="Achuk"><br>
+
+# Achuk
 
 ### The programming language where **AI can't hallucinate APIs.**
 
@@ -67,7 +69,10 @@ It's **one bundle**: compiler, tooling, *and* the fine-tuned model with its
 inference server — nothing else to download:
 
 ```bash
-curl -fsSL https://achuk.dev/install.sh | sh
+curl -fsSL https://achuk.dev/install.sh | sh          # macOS / Linux
+```
+```powershell
+irm https://achuk.dev/install.ps1 | iex                # Windows (PowerShell)
 ```
 
 Or try it without installing: the [playground](https://achuk.dev/playground.html)
@@ -154,7 +159,7 @@ Or open [`playground/index.html`](playground/index.html) — an in-browser demo.
 | `emit-rust` on real bodies | 🧪 experimental |
 | Records / tag-unions / `match` in lowered bodies (currently opaque markers) | 🗺️ roadmap (needs AST + interp support) |
 | File / stdin platform I/O beyond print | 🗺️ roadmap (needs a new host) |
-| Windows | 🗺️ roadmap |
+| Windows | 🟡 installer live (`install.ps1`); binaries cross-compiled, untested on real hardware |
 
 The honest boundary: the language **runs today** (mac + linux, including a
 real HTTP server), and the AI now understands your code at the level of

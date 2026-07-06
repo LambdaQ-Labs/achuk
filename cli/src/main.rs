@@ -91,6 +91,7 @@ fn real_main() -> anyhow::Result<()> {
         Some("mcp") if args.get(1).map(String::as_str) == Some("install") => mcp_install_cmd(),
         // Package manager: publish this package to the registry, or add a
         // dependency from the registry to this project.
+        Some("login") => login_cmd(&args[1..]),
         Some("publish") => publish_cmd(&args[1..]),
         Some("add") => add_cmd(&args[1..]),
         _ => {
@@ -766,6 +767,47 @@ fn toml_value(toml: &str, key: &str) -> Option<String> {
 }
 
 /// `achuk publish [dir]` — bundle this package and upload it to the registry.
+/// The stored registry token: $ACHUK_TOKEN, else ~/.achuk/token.
+fn registry_token() -> Option<String> {
+    if let Ok(t) = std::env::var("ACHUK_TOKEN") {
+        if !t.trim().is_empty() {
+            return Some(t.trim().to_string());
+        }
+    }
+    let p = dirs_home()?.join(".achuk").join("token");
+    std::fs::read_to_string(p).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+}
+
+fn dirs_home() -> Option<PathBuf> {
+    std::env::var_os("HOME").map(PathBuf::from)
+}
+
+/// `achuk login <token>` — store the token from your registry account page
+/// (https://registry.achuk.dev/u/<you>). Mirrors `cargo login`.
+fn login_cmd(args: &[String]) -> anyhow::Result<()> {
+    let token = match args.first() {
+        Some(t) => t.trim().to_string(),
+        None => {
+            eprintln!("paste your token (from {}/login), then Enter:", registry_url());
+            let mut line = String::new();
+            std::io::stdin().read_line(&mut line)?;
+            line.trim().to_string()
+        }
+    };
+    anyhow::ensure!(!token.is_empty(), "no token given");
+    let dir = dirs_home().ok_or_else(|| anyhow::anyhow!("no HOME"))?.join(".achuk");
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join("token");
+    std::fs::write(&path, &token)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    }
+    println!("saved token to {}", path.display());
+    Ok(())
+}
+
 fn publish_cmd(args: &[String]) -> anyhow::Result<()> {
     let root = args
         .first()
@@ -817,9 +859,13 @@ fn publish_cmd(args: &[String]) -> anyhow::Result<()> {
     eprintln!("  {} definitions exported for the AI layer", defs.len());
 
     let reg = registry_url();
+    let token = registry_token().ok_or_else(|| {
+        anyhow::anyhow!("not logged in — run `achuk login <token>` (get one at {reg}/login)")
+    })?;
     eprintln!("publishing {name}@{version} → {reg}");
     let out = std::process::Command::new("curl")
         .args(["-s", "-X", "POST", &format!("{reg}/publish")])
+        .args(["-H", &format!("Authorization: Bearer {token}")])
         .args(["-F", &format!("name={name}")])
         .args(["-F", &format!("version={version}")])
         .arg("-F")

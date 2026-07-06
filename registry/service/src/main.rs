@@ -31,6 +31,7 @@ fn err(c: StatusCode, m: impl ToString) -> (StatusCode, String) {
     (c, m.to_string())
 }
 
+mod auth;
 mod ui;
 
 #[tokio::main]
@@ -64,6 +65,7 @@ async fn main() {
     .execute(&pool)
     .await
     .expect("schema");
+    auth::init_schema(&pool).await;
 
     let state = AppState { pool, blobs, base_url };
     let app = Router::new()
@@ -73,6 +75,12 @@ async fn main() {
         .route("/packages/:name", get(package_meta))
         .route("/b/:filename", get(serve_blob)) // the compiler fetches this
         .route("/defs/:name/:version", get(serve_defs)) // the AI layer fetches this
+        .route("/browse", get(ui::index_html))
+        .route("/signup", get(ui::signup_page).post(auth::signup))
+        .route("/login", get(ui::login_page).post(auth::login))
+        .route("/login-cli", post(auth::login_cli))
+        .route("/logout", post(auth::logout))
+        .route("/u/:username", get(ui::profile_page))
         .with_state(state)
         .layer(DefaultBodyLimit::max(64 * 1024 * 1024));
 
@@ -85,7 +93,14 @@ async fn main() {
 /// `POST /publish` — multipart: fields `name`, `version`, and file `bundle`
 /// (a `.tar.zst` whose base filename is its content hash). Stores the blob
 /// + index row. Returns the URL to reference it by.
-async fn publish(State(st): State<AppState>, mut mp: Multipart) -> ApiResult {
+async fn publish(
+    State(st): State<AppState>,
+    headers: axum::http::HeaderMap,
+    mut mp: Multipart,
+) -> ApiResult {
+    let owner = auth::current_user(&st, &headers).await.ok_or_else(|| {
+        err(StatusCode::UNAUTHORIZED, "not logged in — run `achuk login` (or set ACHUK_TOKEN)")
+    })?;
     let (mut name, mut version, mut filename, mut bytes) =
         (None, None, None, None::<Vec<u8>>);
     let mut defs_bytes = None::<Vec<u8>>;
@@ -154,9 +169,21 @@ async fn publish(State(st): State<AppState>, mut mp: Multipart) -> ApiResult {
         .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, e))?;
     std::fs::write(st.blobs.join(format!("{name}-{version}.defs.json")), &defs_bytes)
         .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    // Name ownership: once a name has an owner, only they may publish to it.
+    if let Some(row) = sqlx::query("SELECT owner FROM packages WHERE name = $1 AND owner IS NOT NULL LIMIT 1")
+        .bind(&name)
+        .fetch_optional(&st.pool)
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, e))?
+    {
+        let existing: String = row.get("owner");
+        if existing != owner {
+            return Err(err(StatusCode::FORBIDDEN, format!("`{name}` is owned by {existing}")));
+        }
+    }
     sqlx::query(
-        "INSERT INTO packages (name, version, hash, filename, size)
-         VALUES ($1,$2,$3,$4,$5)
+        "INSERT INTO packages (name, version, hash, filename, size, owner)
+         VALUES ($1,$2,$3,$4,$5,$6)
          ON CONFLICT (name, version) DO UPDATE
            SET hash=excluded.hash, filename=excluded.filename, size=excluded.size",
     )
@@ -165,6 +192,7 @@ async fn publish(State(st): State<AppState>, mut mp: Multipart) -> ApiResult {
     .bind(&hash)
     .bind(&filename)
     .bind(bytes.len() as i64)
+    .bind(&owner)
     .execute(&st.pool)
     .await
     .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, e))?;

@@ -1,15 +1,15 @@
 {
-  "name": "claw-play",
+  "name": "achuk-play",
   "type": "module",
   "version": "0.1.0",
   "license": "UPL-1.0",
   "files": [
-    "claw_play_bg.wasm",
-    "claw_play.js",
-    "claw_play.d.ts"
+    "achuk_play_bg.wasm",
+    "achuk_play.js",
+    "achuk_play.d.ts"
   ],
-  "main": "claw_play.js",
-  "types": "claw_play.d.ts",
+  "main": "achuk_play.js",
+  "types": "achuk_play.d.ts",
   "sideEffects": [
     "./snippets/*"
   ]

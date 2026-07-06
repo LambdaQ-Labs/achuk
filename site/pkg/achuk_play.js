@@ -56,7 +56,7 @@ export function check_defs(json) {
 
 /**
  * The decode grammar for the current scope — the actual GBNF projection
- * llama.cpp consumes, from the actual claw-constraint crate.
+ * llama.cpp consumes, from the actual achuk-constraint crate.
  * @returns {string}
  */
 export function grammar() {
@@ -99,7 +99,7 @@ export function parse_sig(src) {
 }
 
 /**
- * Render a Def-JSON array as .claw source.
+ * Render a Def-JSON array as .achuk source.
  * @param {string} json
  * @returns {string}
  */

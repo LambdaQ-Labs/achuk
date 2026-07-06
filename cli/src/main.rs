@@ -68,9 +68,17 @@ fn real_main() -> anyhow::Result<()> {
         // Compiler passthrough: `achuk check|build|fmt|test|repl <args>` runs
         // the vendored compiler (achukc). ACHUK_COMPILER overrides discovery.
         Some(cmd @ ("check" | "build" | "fmt" | "test" | "repl")) => {
+            // The vendored compiler still defaults to `main.roc` when no file
+            // is given; Achuk projects use `main.achuk`. Supply it when the
+            // user passed no positional path (only flags, or nothing).
+            let mut passthrough: Vec<String> = args[1..].to_vec();
+            let has_path = passthrough.iter().any(|a| !a.starts_with('-'));
+            if !has_path && cmd != "repl" {
+                passthrough.push("main.achuk".into());
+            }
             let status = std::process::Command::new(find_achukc()?)
                 .arg(cmd)
-                .args(&args[1..])
+                .args(&passthrough)
                 .status()?;
             std::process::exit(status.code().unwrap_or(1));
         }
